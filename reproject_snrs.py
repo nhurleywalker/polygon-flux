@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+__author__ = "Natasha Hurley-Walker"
+__date__ = "10/03/2018"
+
 import os
 import sys
 from astropy.io import fits
@@ -94,7 +97,7 @@ def reproject_snrs(snrs):
                     newhdr = newhdu[0].header
                     for fitskey in ["BMAJ", "BMIN", "BPA", "FREQ"]:
                         newhdr[fitskey] = oldhdr[fitskey]
-                        newhdu.writeto(newfile, overwrite = True)
+                    newhdu.writeto(newfile, overwrite = True)
 
 if __name__ == "__main__":
     # Load the snrs fresh from the files

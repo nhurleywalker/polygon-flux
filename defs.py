@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+__author__ = "Natasha Hurley-Walker"
+__date__ = "10/03/2018"
+
 import os
 import sys
 from astropy.io import fits
