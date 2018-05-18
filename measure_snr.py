@@ -6,6 +6,7 @@ __date__ = "10/03/2018"
 import os
 import sys
 import shutil
+import glob
 
 import numpy as np
 from astropy.io import fits
@@ -17,6 +18,7 @@ from scipy.optimize import leastsq
 import matplotlib
 #matplotlib.use('Agg') # So does not use display -- only good if just making plots
 from matplotlib.widgets import Slider, RadioButtons
+from matplotlib import pyplot as plt
 
 from matplotlib import rc
 rc('text', usetex=True)
@@ -177,8 +179,7 @@ def poly_plots(snrs,export):
             sources.x, sources.y = w.wcs_pix2world(zip(polypick.points.x,polypick.points.y),0).transpose()
         if len(polypick.exclude.x):
             exclude.x, exclude.y = w.wcs_pix2world(zip(polypick.exclude.x,polypick.exclude.y),0).transpose()
-# TODO: fix this so it is in RA and Dec, not galactic co-ordinates!!
-
+# NB: overwrites data for any old measurements for this live object
         snr.polygon = polygon
         snr.sources = sources
         snr.exclude = exclude
@@ -246,13 +247,11 @@ def fit_fluxes(snrs, export):#, makeplots):
 # Save to SNR object for later
         snr.flux = dict(zip(freqs, fluxes))
 
-    # Obviously get this from the header in future
-#        freqs = [88, 118, 154, 200]
         logfreqs = np.log([f/normfreq for f in freqs])
         logfluxes = np.log(fluxes)
         
-#        print np.log(freqs)
-#        print np.log(fluxes)
+        print freqs
+        print fluxes
 # 10% errors to start with
         fluxerrors = [0.1*s for s in fluxes]
         alpha, err_alpha, amp, err_amp, chi2red = fit_spectrum(logfreqs,logfluxes,0.1)
@@ -283,6 +282,8 @@ def fit_fluxes(snrs, export):#, makeplots):
             ax2.set_ylabel("S / Jy")
             ax2.set_xlabel("Frequency / MHz")
             ax2.legend()
+            if os.path.exists(outpng):
+                renumber(outpng)
             example.savefig(outpng)
             example.clf()
         
@@ -292,23 +293,48 @@ def fit_fluxes(snrs, export):#, makeplots):
                 update_text_file(snr, outtype)
     return snrs
 
+# Naming convention for outputfiles
+# npzs/<snr.name><.npz><.ii>
+# where ii is a 2-digit integer
+def renumber(output_file):
+   # name, file_ext = os.path.splitext(output_file)
+    allfiles = sorted(glob.glob(output_file+"*"), reverse=True)
+    for fl in allfiles:
+       iis = fl.split(".")[-1]
+       try:
+           ii = int(iis)
+           ii += 1
+           pn = os.path.splitext(fl)[0]
+       except:
+           ii = 0
+           pn = fl
+       shutil.move(fl, "{0}.{1:02d}".format(pn,ii))
+
 def export_snrs(snrs):
     print "Exporting SNR catalogue"
-    output_file = "SNR_catalogue.npz"
-    np.savez(output_file,snrs=snrs)
+    file_ext = "npz"
+    for snr in snrs:
+        output_file = "npzs/{0}.{1}".format(snr.name, file_ext)
+        if os.path.exists(output_file):
+            renumber(output_file)
+        np.savez(output_file,snr=[snr])
     # Also need to add a pretty output format table for reference, maybe a FITS or VO?
 
-def import_snrs():
-    print "Importing SNR catalogue"
-    input_file = "SNR_catalogue.npz"
+def import_snr(snr):
+    print "Checking for existing measurements for {0}".format(snr.name)
+    input_dir = "npzs/"
+    input_file = input_dir+snr.name+".npz"
     if os.path.exists(input_file):
         data = np.load(input_file)
-        snrs = data["snrs"].tolist()
+# This is hideously convoluted, but for some reason I can't save a single object in one of
+# these npz files, it has to be a list of objects, and then when I get it out again, I can't
+# just select the 0th index of the array; it complains that the array has 0 size!
+        snrtemp = data["snr"].astype(list)
+        newlist = [ snr for snr in snrtemp ]
+        snr = newlist[0]
     else:
-        print "Cannot find existing SNR_catalogue.npz!"
-        snrs = []
-    print("Imported {0} SNRs".format(len(snrs)))
-    return snrs
+        print "No existing measurements for {0}".format(snr.name)
+    return snr
 
 def make_plots(snrs):
     for snr in snrs:
@@ -378,7 +404,10 @@ def make_plots(snrs):
                 ax.plot(local_sources.x,local_sources.y,**srcmark)
             if len(local_exclude.x):
                 ax.plot(local_exclude.x,local_exclude.y,**restexc)
-        fig.savefig("plots/"+snr.name+".png")
+        output_file = "plots/"+snr.name+".png"
+        if os.path.exists(output_file):
+            renumber(output_file)
+        fig.savefig(output_file)
 
 #       figure out what plots I actually want:
 #       some combination of:
@@ -393,12 +422,12 @@ if __name__ == "__main__":
     group1 = parser.add_argument_group("functions to perform")
     group1.add_argument('--poly', dest='poly', default=False, action='store_true',
                         help="Draw polygons on the supernova remnants instead of simply loading from file (default = False)")
-    group1.add_argument('--export', dest='export', default=False, action='store_true',
-                        help="Save the resulting polygons, source locations, flux densities, etc to SNR_catalogue.npz (NB: will overwrite any existing measurements) (default = False)")
-    group1.add_argument('--plot', dest='makeplots', default=False, action='store_true',
-                        help="Make plots of the polygons and sources overlaid on FITS images (NB: will overwrite any existing plots) (default = False)")
     group1.add_argument('--fluxfit', dest='fluxfit', default=False, action='store_true',
-                        help="Fit SEDs to the SNRs and make spectral plots (default=False)")
+                        help="Fit SEDs to the SNRs, create interpolated background images and make spectral plots (default=False)")
+    group1.add_argument('--export', dest='export', default=False, action='store_true',
+                        help="Save the resulting polygons, source locations, flux densities, etc to npz files (default=False)")
+    group1.add_argument('--plot', dest='makeplots', default=False, action='store_true',
+                        help="Make plots of the polygons and sources overlaid on FITS images (default = False)")
 #    group1.add_argument('--fit', dest='fit', default=False, action='store_true',
 #                        help="Fit the supernova remnants instead of simply loading from file (default = False)")
 #    group1.add_argument("--xm", dest='xm', type=str, default=None,
@@ -429,19 +458,33 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit()
  
-    # Load the snr info from the files
     snrs = read_snrs()
+    updated_snrs = []
+    for snr in snrs:
+        snr = import_snr(snr)
+        updated_snrs.append(snr)
+    snrs = updated_snrs
+
     if options.poly:
     # Do all the interactive plotting and fitting
         snrs = poly_plots(snrs,options.export)
-    else:
-        snrs = import_snrs()
     if options.fluxfit:
-        snrs = fit_fluxes(snrs,options.export)
+        fitsnrs = []
+        for snr in snrs:
+            if snr.polygon is not None:
+                fitsnrs.append(snr)
+            else:
+                print "No measured polygons for {0}, cannot fit fluxes".format(snr.name)
+        snrs = fit_fluxes(fitsnrs,options.export)
 
     if options.makeplots is True:
-        make_plots(snrs)
-
+        plotsnrs = []
+        for snr in snrs:
+            if snr.polygon is not None:
+                plotsnrs.append(snr)
+            else:
+                print "No measured polygons for {0}, cannot plot".format(snr.name)
+        make_plots(plotsnrs)
 
 # Now to add:
 # - Make a test simulation fits file that anyone can play with and verify that the code works

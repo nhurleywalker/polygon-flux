@@ -187,6 +187,7 @@ class PolyPick:
 #         return self.coords.x, self.coords.y
 
 def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
+    print fitsfile
     hdu = fits.open(fitsfile)
     # Transform the polygon and source arrays into local pixel co-ordinates for further operations
     w = wcs.WCS(hdu[0].header)
@@ -213,7 +214,10 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     # np.sum(hdu[0].data[indexes[np.where(inside)]])
     total_flux = 0.0
     for ix in indexes[np.where(inside)]:
-       total_flux += hdu[0].data[ix[1],ix[0]] # In Jy/pix
+       if not np.isnan(hdu[0].data[ix[1],ix[0]]):
+           total_flux += hdu[0].data[ix[1],ix[0]] # In Jy/pix
+       else:
+           print "WARNING, NAN detected at x = {0}, y={1}!".format(ix[0], ix[1])
        
     bmaj = hdu[0].header["BMAJ"]
     bmin = hdu[0].header["BMIN"]
