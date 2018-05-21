@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 __author__ = "Natasha Hurley-Walker"
-__date__ = "10/03/2018"
+__date__ = "21/05/2018"
 
 import os
 import sys
@@ -9,6 +9,7 @@ import shutil
 import glob
 
 import numpy as np
+import pickle
 from astropy.io import fits
 from astropy import wcs
 
@@ -312,26 +313,24 @@ def renumber(output_file):
 
 def export_snrs(snrs):
     print "Exporting SNR catalogue"
-    file_ext = "npz"
+    file_ext = "pkl"
+    ouput_dir = "pkls/"
     for snr in snrs:
-        output_file = "npzs/{0}.{1}".format(snr.name, file_ext)
+        output_file = "{0}/{1}.{2}".format(input_dir, snr.name, file_ext)
         if os.path.exists(output_file):
             renumber(output_file)
-        np.savez(output_file,snr=[snr])
+        ofile = open(output_file, "wb")
+        pickle.dump(snr, ofile)
     # Also need to add a pretty output format table for reference, maybe a FITS or VO?
 
 def import_snr(snr):
     print "Checking for existing measurements for {0}".format(snr.name)
-    input_dir = "npzs/"
-    input_file = input_dir+snr.name+".npz"
+    file_ext = "pkl"
+    input_dir = "pkls"
+    input_file = "{0}/{1}.{2}".format(input_dir, snr.name, file_ext)
     if os.path.exists(input_file):
-        data = np.load(input_file)
-# This is hideously convoluted, but for some reason I can't save a single object in one of
-# these npz files, it has to be a list of objects, and then when I get it out again, I can't
-# just select the 0th index of the array; it complains that the array has 0 size!
-        snrtemp = data["snr"].astype(list)
-        newlist = [ snr for snr in snrtemp ]
-        snr = newlist[0]
+        ifile = open(input_file, "rb")
+        snr = pickle.load(ifile)
     else:
         print "No existing measurements for {0}".format(snr.name)
     return snr
