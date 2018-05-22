@@ -12,6 +12,7 @@ import numpy as np
 import pickle
 from astropy.io import fits
 from astropy import wcs
+from astropy.table import Table
 
 # Need a least-squares estimator that gives a useable error estimate
 from scipy.optimize import leastsq
@@ -316,12 +317,20 @@ def export_snrs(snrs):
     file_ext = "pkl"
     ouput_dir = "pkls/"
     for snr in snrs:
-        output_file = "{0}/{1}.{2}".format(input_dir, snr.name, file_ext)
+        output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
         if os.path.exists(output_file):
             renumber(output_file)
         ofile = open(output_file, "wb")
         pickle.dump(snr, ofile)
-    # Also need to add a pretty output format table for reference, maybe a FITS or VO?
+    file_ext = "fits"
+    ouput_dir = "cats/"
+    for snr in snrs:
+        output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
+        if os.path.exists(output_file):
+            renumber(output_file)
+            t = Table([[snr.name], [snr.loc.ra.value], [snr.local.dec.value], [snr.maj], [snr.min], [snr.known], [snr.fit["flux"]], [snr.fit["alpha"]], [snr.fit["chi2red"]]], names=("Name", "RAJ2000", "DEJ2000", "major", "minor", "known", "flux_fitted", "alpha", "chi2red"))
+        # Still to output, probably in a different table: self.flux = None # A dictionary of frequencies to flux densities
+            t.write(output_file, format=file_ext)
 
 def import_snr(snr):
     print "Checking for existing measurements for {0}".format(snr.name)
