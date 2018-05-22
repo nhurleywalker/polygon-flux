@@ -53,22 +53,19 @@ class SNR(object):
         self.flux = None # A dictionary of frequencies to flux densities
         self.fit = None # A dictionary of "flux" -> total flux at 150 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
 
-def file_len(fname):
-    with open(fname) as f:
-        for i, l in enumerate(f):
-            pass
-    return i + 1
+def is_non_zero_file(fpath):  
+    return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 # Read in the SNRs from files
 # Get the known SNRs from Dave Green's "DAG.txt"
 #                                          l b HH MM SS DD MM 
 def read_snrs():
-    if not os.path.exists("DAG.txt") or not os.path.exists("candidates.txt"):
-        print "Argh, can't find DAG.txt and candidates.txt!"
+    if not os.path.exists("DAG.txt") and not os.path.exists("candidates.txt"):
+        print "Neither DAG.txt nor candidates.txt exist so I don't know what to search for."
         sys.exit(1)
         
     snrs = []
 
-    if file_len("DAG.txt"):
+    if is_non_zero_file("DAG.txt"):
         tempcat = np.genfromtxt("DAG.txt", delimiter=(6,6,4,3,3,5,3))
         # Elliptical radii
         sizestrs = np.genfromtxt("DAG.txt",usecols=7,dtype=str)
@@ -105,7 +102,7 @@ def read_snrs():
            snrs.append(snr)
 
     # Get the candidate SNRs from my text file
-    if file_len("candidates.txt"):
+    if is_non_zero_file("candidates.txt"):
         tempcat = np.loadtxt("candidates.txt")
 # Makes it work for single-line files
         if len(tempcat.shape)==1:
