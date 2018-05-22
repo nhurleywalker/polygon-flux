@@ -83,7 +83,7 @@ def newfigure(num=None,**args):
        plt.get_current_fig_manager().window.resize(1000,500)
        return hfig
 
-def poly_plots(snrs,export):
+def poly_plots(snrs):
     snrs2 = []
     for snr in snrs:
         print "Fitting polygons and sources to "+snr.name
@@ -187,9 +187,6 @@ def poly_plots(snrs,export):
         snr.exclude = exclude
         snrs2.append(snr)
 
-    if export:
-        export_snrs(snrs)
-
     return snrs2 # Is this necessary?
 
 def update_text_file(snr, outtype):
@@ -230,7 +227,7 @@ def update_text_file(snr, outtype):
             output_file.write(outformat.format(*outvars))
 # TODO: sort the output file by some index -- galactic longitude then latitude?
 
-def fit_fluxes(snrs, export):#, makeplots):
+def fit_fluxes(snrs):
     normfreq = 150000000. # 150 MHz
     for snr in snrs:
         print "Fitting spectrum to flux densities from "+snr.name
@@ -245,7 +242,7 @@ def fit_fluxes(snrs, export):#, makeplots):
                 fitsfile = color+"/rpj/"+snr.name+".fits"
             hdu = fits.open(fitsfile)
             freqs.append(hdu[0].header["FREQ"])
-            fluxes.append(find_fluxes(snr.polygon, snr.sources, snr.exclude, fitsfile))#, export))
+            fluxes.append(find_fluxes(snr.polygon, snr.sources, snr.exclude, fitsfile))
 # Save to SNR object for later
         snr.flux = dict(zip(freqs, fluxes))
 
@@ -317,20 +314,31 @@ def export_snrs(snrs):
     file_ext = "pkl"
     output_dir = "pkls/"
     for snr in snrs:
+        print "Pickling {0}".format(snr.name)
         output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
         if os.path.exists(output_file):
             renumber(output_file)
         ofile = open(output_file, "wb")
         pickle.dump(snr, ofile)
-    file_ext = "fits"
-    output_dir = "cats/"
-    for snr in snrs:
+        file_ext = "fits"
+        output_dir = "cats/"
         output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
+        print "Writing FITS catalogue for {0}".format(snr.name)
         if os.path.exists(output_file):
             renumber(output_file)
-            t = Table([[snr.name], [snr.loc.ra.value], [snr.local.dec.value], [snr.maj], [snr.min], [snr.known], [snr.fit["flux"]], [snr.fit["alpha"]], [snr.fit["chi2red"]]], names=("Name", "RAJ2000", "DEJ2000", "major", "minor", "known", "flux_fitted", "alpha", "chi2red"))
-        # Still to output, probably in a different table: self.flux = None # A dictionary of frequencies to flux densities
-            t.write(output_file, format=file_ext)
+# FINISH THIS
+        if snr.fit is None:
+            sf = ""
+            sa = ""
+            sc = ""
+        else:
+            sf = snr.fit["flux"]
+            sa = snr.fit["alpha"]
+            sc = snr.fit["chi2red"]
+        t = Table([[snr.name], [snr.loc.ra.value], [snr.loc.dec.value], [snr.maj], [snr.min], [snr.known], [sf], [sa], [sc]], names=("Name", "RAJ2000", "DEJ2000", "major", "minor", "known", "flux_fitted", "alpha", "chi2red"))
+        print t
+    # Still to output, probably in a different table: self.flux = None # A dictionary of frequencies to flux densities
+        t.write(output_file, format=file_ext)
 
 def import_snr(snr):
     print "Checking for existing measurements for {0}".format(snr.name)
@@ -473,17 +481,24 @@ if __name__ == "__main__":
         updated_snrs.append(snr)
     snrs = updated_snrs
 
-    if options.poly:
     # Do all the interactive plotting and fitting
-        snrs = poly_plots(snrs,options.export)
+    if options.poly:
+    # Only snrs which have been fitted will be returned by the function
+        snrs = poly_plots(snrs)
+
+    # Fit flux densities across the band using the measured polygons
     if options.fluxfit:
         fitsnrs = []
+        # Necessary in case you load these from existing files which somehow don't have polygons
         for snr in snrs:
             if snr.polygon is not None:
                 fitsnrs.append(snr)
             else:
                 print "No measured polygons for {0}, cannot fit fluxes".format(snr.name)
-        snrs = fit_fluxes(fitsnrs,options.export)
+        snrs = fit_fluxes(fitsnrs)
+
+    if options.export:
+        export_snrs(snrs)
 
     if options.makeplots is True:
         plotsnrs = []
