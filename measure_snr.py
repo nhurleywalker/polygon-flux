@@ -315,7 +315,7 @@ def renumber(output_file):
 def export_snrs(snrs):
     print "Exporting SNR catalogue"
     file_ext = "pkl"
-    ouput_dir = "pkls/"
+    output_dir = "pkls/"
     for snr in snrs:
         output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
         if os.path.exists(output_file):
@@ -323,7 +323,7 @@ def export_snrs(snrs):
         ofile = open(output_file, "wb")
         pickle.dump(snr, ofile)
     file_ext = "fits"
-    ouput_dir = "cats/"
+    output_dir = "cats/"
     for snr in snrs:
         output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
         if os.path.exists(output_file):
