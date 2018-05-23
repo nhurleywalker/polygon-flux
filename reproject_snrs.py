@@ -24,7 +24,7 @@ from defs import read_snrs
 
 def reproject_snrs(snrs):
     padding = 1.4
-    colors = ["white", "red", "green", "blue"]
+    colors = ["white", "red", "green", "blue", "072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
     fitsdir = "/home/tash/data/MWA/GLEAM/GP/Week4/rgb/"
 
     for color in colors:
@@ -35,14 +35,14 @@ def reproject_snrs(snrs):
             if not os.path.exists(color+"/rpj"):
                 os.makedirs(color+"/rpj")
 
-        fitsfile = fitsdir+color+"_MOL.fits"
-
-        hdu = fits.open(fitsfile)
-        w = wcs.WCS(hdu[0].header) 
-        try:
-            pix2deg = hdu[0].header["CDELT2"]
-        except KeyError:
-            pix2deg = hdu[0].header["CD2_2"]
+#        fitsfile = fitsdir+color+"_MOL.fits"
+#
+#        hdu = fits.open(fitsfile)
+#        w = wcs.WCS(hdu[0].header) 
+#        try:
+#            pix2deg = hdu[0].header["CDELT2"]
+#        except KeyError:
+#            pix2deg = hdu[0].header["CD2_2"]
 
         # Using the astropy cut-out method
 
@@ -51,13 +51,19 @@ def reproject_snrs(snrs):
     # No point doing the ones not in my search region
             l = snr.loc.galactic.l.value
             if (((l>180) and (l<240)) or (l>340) or (l<60)):
-
-    # A bit of a sad hack, I'd rather just have one PSF file, but it's too much hassle
+    # A bit of a sad hack, I'd rather just have one file, but it's too much hassle
     # Week4 for GC SNR; Week2 for anticentre SNR
                 if ((l>180) and (l<240)):
                     psf = fits.open(fitsdir+"Week2_"+color+"_lownoise_comp_psf.fits")
+                    hdu = fits.open(fitsdir+"Week2_"+color+"_lownoise_ddmod_rescaled.fits")
                 else:
                     psf = fits.open(fitsdir+"Week4_"+color+"_lownoise_comp_psf.fits")
+                    hdu = fits.open(fitsdir+"Week4_"+color+"_lownoise_ddmod_rescaled.fits")
+                try:
+                    pix2deg = hdu[0].header["CDELT2"]
+                except KeyError:
+                    pix2deg = hdu[0].header["CD2_2"]
+                w = wcs.WCS(hdu[0].header) 
                 name = snr.name+".fits"
 # Set a minimum cutout size; otherwise I can't properly measure the remnant against the background
                 if snr.min*60 > 20: 
