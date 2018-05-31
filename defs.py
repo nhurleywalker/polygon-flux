@@ -52,6 +52,7 @@ class SNR(object):
         self.exclude = None
         self.flux = None # A dictionary of frequencies to flux densities
         self.bkg = None # A dictionary of frequencies to background flux densities
+        self.rms = None # A dictionary of frequencies to local RMS measurements
         self.fit = None # A dictionary of "flux" -> total flux at 150 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
 
 def is_non_zero_file(fpath):  
@@ -259,14 +260,14 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     mask = np.copy(hdu[0].data)
     mask[:,:] = np.nan
     # New feature: Now subtract the mean of the ring from the total_flux
-    bkg_flux = 0.0
-    n = 0.0
+    bkg_list = []
     for ix in indexes[useforbkg]:
-       bkg_flux += hdu[0].data[ix[1],ix[0]] # In Jy/pix
-       mask[ix[1],ix[0]] = hdu[0].data[ix[1],ix[0]]
-       n+=1
-# Average background level in Jy/pix rather than total flux of background (over what would be an arbitrary area)
-    bkg_flux = bkg_flux / n
+       bkg_list.append(hdu[0].data[ix[1],ix[0]]) # In Jy/pix
+       mask[ix[1],ix[0]] = hdu[0].data[ix[1],ix[0]] # Unset the NaNs of the mask
+# Average background level in Jy/pix
+    bkg_flux = np.mean(bkg_list)
+# RMS of this area in Jy/pix
+    rms = np.std(bkg_list)
 
     new = fits.PrimaryHDU(mask,header=header_new) #create new hdu
     outname = fitsfile.replace(".fits","_mask.fits")
@@ -295,4 +296,4 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
 
     print "Number of beams searched: {0} \n Total flux density (Jy): {1} \n Total source flux density (Jy): {2} \n Background flux density (Jy): {3}\n Number of beams masked after finding sources: {4}\n Final flux density (Jy): {5}".format(nbeams, total_flux, source_flux, bkg_flux, len(sources.x), final_flux)
 
-    return final_flux, total_flux, source_flux, bkg_flux
+    return final_flux, total_flux, source_flux, bkg_flux, rms
