@@ -286,31 +286,26 @@ def fit_fluxes(snrs):
             print "Spectrum fit, making plot for "+snr.name
             outpng = ("./spectra/"+snr.name+".png")
             # Plot
-            example = plt.figure(figsize=(10,5))
+            fig = plt.figure(figsize=(10,5))
             # LaTeX-safe
-            example.suptitle(snr.name.replace("_","\,"))
-            ax1 = example.add_subplot(1,2,1)
-            ax1.plot(plotfreqs, powerlaw(plotfreqs, flux150/(normfreq**alpha), alpha),label="alpha=${0:3.1f}$ ".format(alpha))     # Scipy Fit
-            ax1.errorbar(freqs, bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
-            ax1.errorbar(freqs, fluxes, yerr=fluxerrors, fmt = "k.") # Data
-            ax1.set_ylabel("S / Jy")
-            ax1.set_xlabel("Frequency / MHz")
-            ax1.legend()
-            ax2=example.add_subplot(1,2,2)
+            fig.suptitle(snr.name.replace("_","\,"))
+            ax1 = fig.add_subplot(1,2,1)
+            ax2=fig.add_subplot(1,2,2)
             ax2.set_xscale("log")
             ax2.set_yscale("log")
-            ax2.plot(plotfreqs, powerlaw(plotfreqs, flux150/(normfreq**alpha), alpha),label="alpha=${0:3.1f}$ ".format(alpha))     # Scipy Fit
-            ax2.errorbar(freqs, bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
-            ax2.errorbar(freqs, fluxes, yerr=fluxerrors, fmt = "k.")  # Data
+            for ax in ax1, ax2:
+                ax.plot(plotfreqs, powerlaw(plotfreqs, flux150/(normfreq**alpha), alpha),label="alpha=${0:3.1f}$ ".format(alpha))     # Scipy Fit
+                ax.errorbar(freqs, bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
+                ax.errorbar(freqs, fluxes, yerr=fluxerrors, fmt = "k.") # Data
+                ax.set_ylabel("S / Jy")
+                ax.set_xlabel("Frequency / MHz")
+                ax.legend()
             ax2.set_xlim(0.8*np.min(freqs), 1.2*np.max(freqs))
             ax2.set_ylim(0.3*np.min([np.min(fluxes),np.min(bkg)]),3*np.max([np.max(fluxes),np.max(bkg)]))
-            ax2.set_ylabel("S / Jy")
-            ax2.set_xlabel("Frequency / MHz")
-            ax2.legend()
             if os.path.exists(outpng):
                 renumber(outpng)
-            example.savefig(outpng)
-            example.clf()
+            fig.savefig(outpng)
+            fig.clf()
         
             snr.fit = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
 # Add table output
@@ -319,7 +314,7 @@ def fit_fluxes(snrs):
     return snrs
 
 # Naming convention for outputfiles
-# type/<snr.name><.type><.ii>
+# types/<snr.name><.type><.ii>
 # where ii is a 2-digit integer
 def renumber(output_file):
    # name, file_ext = os.path.splitext(output_file)
