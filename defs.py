@@ -51,6 +51,7 @@ class SNR(object):
         self.sources = None
         self.exclude = None
         self.flux = None # A dictionary of frequencies to flux densities
+        self.bkg = None # A dictionary of frequencies to background flux densities
         self.fit = None # A dictionary of "flux" -> total flux at 150 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
 
 def is_non_zero_file(fpath):  
@@ -233,62 +234,65 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     npix = indexes[np.where(inside)].shape[0]
     nbeams = npix * (pix2deg**2) / beamvolume
 
-    # Feed the interpolation routine the slightly larger area, so we avoid interpolating directly on my SNR
+# Use a "ring" around the SNR for background, instead of interpolating and averaging over the interpolation
     # See https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.ndimage.morphology.binary_dilation.html
     # Note that we have to reshape the array back into 2D, otherwise it is just a long 1D list
-    # TODO: now that I'm using interpolated images, it might be more suitable to make the number of iterations dependent on the frequency in the fits header, because the red images are highly oversampled. But let's see if it makes any difference first.
-    grown = np.reshape(ndimage.binary_dilation(np.reshape(inside,(xmax,ymax)),iterations=4),xmax*ymax)
 
-    # Exclude the areas unsuitable for a background fit
-    bkg_indices = np.where(np.logical_not(grown))
+    inner = np.reshape(ndimage.binary_dilation(np.reshape(inside,(xmax,ymax)),iterations=4),xmax*ymax)
+    outer = np.reshape(ndimage.binary_dilation(np.reshape(inside,(xmax,ymax)),iterations=20),xmax*ymax)
+# XOR operation: want to save the area where outer is True but inner is False,
+# and exclude the areas where both are True (the SNR) and both are False (the rest of the image)
+    bkger = [ a != b for a,b in zip(inner,outer)]
+    bkg_indices = np.where(bkger)
+
+# Exclude the areas the user flagged as unsuitable for a background fit
     if len(local_exclude.x):
         ex_indices = np.where(np.logical_not(ezone))
-        useforinterp = np.intersect1d(bkg_indices, ex_indices)
+        useforbkg = np.intersect1d(bkg_indices, ex_indices)
     else:
-        useforinterp = bkg_indices
+        useforbkg = bkg_indices
 
-    grid_x, grid_y = np.mgrid[0:xmax-1:1, 0:ymax-1:1]
-
-    flux_values = []
-#    for ix in indexes[np.where(np.logical_not(grown))]:
-    for ix in indexes[useforinterp]:
-       flux_values.append(hdu[0].data[ix[1],ix[0]])
-
-    interp = griddata(indexes[useforinterp], flux_values, (grid_x, grid_y), method="linear")
-
-    # TODO: restore the data values for the exclusion zone so that the interpolated fits file still has that area ready for plotting later
-
-   # Save as a FITS file
+   # Save mask as a FITS file
     header_new = hdu[0].header
         # Add a keyword so we know this one has been backgrounded
-    header_new["INTERP"] = "TRUE"
-    new = fits.PrimaryHDU(interp.T,header=header_new) #create new hdu
-    outname = fitsfile.replace(".fits","_interp.fits")
+    header_new["MASK"] = "TRUE"
+    mask = np.copy(hdu[0].data)
+    mask[:,:] = np.nan
+    # New feature: Now subtract the mean of the ring from the total_flux
+    bkg_flux = 0.0
+    n = 0.0
+    for ix in indexes[useforbkg]:
+       bkg_flux += hdu[0].data[ix[1],ix[0]] # In Jy/pix
+       mask[ix[1],ix[0]] = hdu[0].data[ix[1],ix[0]]
+       n+=1
+# Average background level in Jy/pix rather than total flux of background (over what would be an arbitrary area)
+    bkg_flux = bkg_flux / n
+
+    new = fits.PrimaryHDU(mask,header=header_new) #create new hdu
+    outname = fitsfile.replace(".fits","_mask.fits")
     newlist = fits.HDUList([new]) #create new hdulist
     newlist.writeto(outname,overwrite=True)
-
-    # Now subtract what we interpolated from the total_flux
-    bkg_flux = 0.0
-    for ix in indexes[np.where(inside)]:
-       bkg_flux += interp[ix[0],ix[1]] # In Jy/pix
-
-    bkg_flux = bkg_flux * (pix2deg**2) / beamvolume
 
     source_flux = 0.0
     for x,y in zip(local_sources.x,local_sources.y):
        if path.contains_points([[x,y]]):
     # Search for the local maximum within a beam-width
+    # TODO: modify this so it only does it for the white image, and then uses that location for all sources
            data_patch = hdu[0].data[np.floor(y-bmaj/pix2deg).astype(int):np.ceil(y+bmaj/pix2deg).astype(int),np.floor(x-bmaj/pix2deg).astype(int):np.ceil(x+bmaj/pix2deg).astype(int)]
            peak_flux = np.max(data_patch) # In Jy/pix, but we assume the sources are unresolved
-    # Need the background level at this point
-           bkg_index = np.unravel_index(data_patch.argmax(), data_patch.shape)
-           interp_patch = interp.T[np.floor(y-bmaj/pix2deg).astype(int):np.ceil(y+bmaj/pix2deg).astype(int),np.floor(x-bmaj/pix2deg).astype(int):np.ceil(x+bmaj/pix2deg).astype(int)]
-           bkg_at_src = interp_patch[bkg_index]
-           source_flux += (peak_flux - bkg_at_src)
-   # TODO: modify the SNR source location to match the peak flux location -- will need to modify the SNR object at the end of this function
+#    # Need the background level at this point
+#
+#           bkg_index = np.unravel_index(data_patch.argmax(), data_patch.shape)
+#           interp_patch = interp.T[np.floor(y-bmaj/pix2deg).astype(int):np.ceil(y+bmaj/pix2deg).astype(int),np.floor(x-bmaj/pix2deg).astype(int):np.ceil(x+bmaj/pix2deg).astype(int)]
+#           bkg_at_src = interp_patch[bkg_index]
+#           source_flux += (peak_flux - bkg_at_src)
 
-    final_flux = total_flux - source_flux - bkg_flux
+# Use the average background level instead
+# TODO: include the average surface brightness of the remnant
+           source_flux += (peak_flux - bkg_flux )
+
+    final_flux = total_flux - source_flux - (bkg_flux * nbeams)
 
     print "Number of beams searched: {0} \n Total flux density (Jy): {1} \n Total source flux density (Jy): {2} \n Background flux density (Jy): {3}\n Number of beams masked after finding sources: {4}\n Final flux density (Jy): {5}".format(nbeams, total_flux, source_flux, bkg_flux, len(sources.x), final_flux)
 
-    return final_flux
+    return final_flux, total_flux, source_flux, bkg_flux
