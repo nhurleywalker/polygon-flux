@@ -227,6 +227,7 @@ def do_fit(colors,snr,normfreq):
     freqs = []
     fluxes = []
     bkg = []
+    rms = []
     for color in colors:
         if color == "white":
             fitsfile = color+"/"+snr.name+".fits"
@@ -234,19 +235,21 @@ def do_fit(colors,snr,normfreq):
             fitsfile = color+"/rpj/"+snr.name+".fits"
         hdu = fits.open(fitsfile)
         freqs.append(hdu[0].header["FREQ"])
-        final_flux, total_flux, source_flux, bkg_flux = find_fluxes(snr.polygon, snr.sources, snr.exclude, fitsfile)
+        final_flux, total_flux, source_flux, bkg_flux, rms_flux = find_fluxes(snr.polygon, snr.sources, snr.exclude, fitsfile)
         fluxes.append(final_flux)
         bkg.append(bkg_flux)
+        rms.append(rms_flux)
 
     logfreqs = np.log([f/normfreq for f in freqs])
     logfluxes = np.log(fluxes)
 
-# 10% errors to start with
-    fluxerrors = [0.1*s for s in fluxes]
+#    fluxerrors = [0.1*s for s in fluxes]
+    fluxerrors = [np.sqrt((0.02*s)**2+(r)) for s,r in zip(fluxes,rms)]
     alpha, err_alpha, amp, err_amp, chi2red = fit_spectrum(logfreqs,logfluxes,0.1)
 # Save to SNR object for later
     snr.flux = dict(zip(freqs, fluxes))
     snr.bkg = dict(zip(freqs, bkg))
+    snr.rms = dict(zip(freqs, rms))
 
     return snr, alpha, err_alpha, amp, err_amp, chi2red
 
@@ -264,16 +267,17 @@ def fit_fluxes(snrs):
 
         print "Reduced chi2 of fit: {0}".format(chi2red)
 # If fitting across all the sub-bands failed, use just the wideband images
-#        if not alpha or chi2red > 1.93:
-#            colors = ["white", "red", "green", "blue"]
-#            print "Sub-band fit failed: using wideband images."
-#            snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr,normfreq)
+        if not alpha or chi2red > 1.93:
+            colors = ["white", "red", "green", "blue"]
+            print "Sub-band fit failed: using wideband images."
+            snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr,normfreq)
 
         # frequencies for plotting
         freqs = snr.flux.keys()
         fluxes = snr.flux.values()
         bkg = snr.bkg.values()
-        fluxerrors = [0.1*s for s in fluxes]
+        rms = snr.rms.values()
+        fluxerrors = [np.sqrt((0.02*s)**2+(r)) for s,r in zip(fluxes,rms)]
         plotfreqs = np.linspace(0.9*np.min(freqs),1.1*np.max(freqs),200)
 
         if alpha:
@@ -287,8 +291,8 @@ def fit_fluxes(snrs):
             example.suptitle(snr.name.replace("_","\,"))
             ax1 = example.add_subplot(1,2,1)
             ax1.plot(plotfreqs, powerlaw(plotfreqs, flux150/(normfreq**alpha), alpha),label="alpha=${0:3.1f}$ ".format(alpha))     # Scipy Fit
-            ax1.errorbar(freqs, fluxes, yerr=fluxerrors, fmt='k.')  # Data
-            ax1.scatter(freqs, bkg, marker="o", c = "red")  # Background
+            ax1.errorbar(freqs, bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
+            ax1.errorbar(freqs, fluxes, yerr=fluxerrors, fmt = "k.") # Data
             ax1.set_ylabel("S / Jy")
             ax1.set_xlabel("Frequency / MHz")
             ax1.legend()
@@ -296,10 +300,10 @@ def fit_fluxes(snrs):
             ax2.set_xscale("log")
             ax2.set_yscale("log")
             ax2.plot(plotfreqs, powerlaw(plotfreqs, flux150/(normfreq**alpha), alpha),label="alpha=${0:3.1f}$ ".format(alpha))     # Scipy Fit
-            ax2.errorbar(freqs, fluxes, yerr=fluxerrors, fmt='k.')  # Data
-            ax2.scatter(freqs, bkg, marker="o", c = "red")  # Background
-    #        ax2.set_xlim(left=xmin01,right=xmax01)
-    #       ax2.set_ylim([min(np.exp(flux_array)),max(np.exp(flux_array))])
+            ax2.errorbar(freqs, bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
+            ax2.errorbar(freqs, fluxes, yerr=fluxerrors, fmt = "k.")  # Data
+            ax2.set_xlim(0.8*np.min(freqs), 1.2*np.max(freqs))
+            ax2.set_ylim(0.3*np.min([np.min(fluxes),np.min(bkg)]),3*np.max([np.max(fluxes),np.max(bkg)]))
             ax2.set_ylabel("S / Jy")
             ax2.set_xlabel("Frequency / MHz")
             ax2.legend()
@@ -356,13 +360,9 @@ def export_snrs(snrs):
             sa = snr.fit["alpha"]
             sc = snr.fit["chi2red"]
         t = Table([[snr.name], [snr.loc.ra.value], [snr.loc.dec.value], [snr.maj], [snr.min], [snr.known], [sf], [sa], [sc]], names=("Name", "RAJ2000", "DEJ2000", "major", "minor", "known", "flux_fitted", "alpha", "chi2red"))
-        print t
-        print snr.flux
         if snr.flux is not None:
             for key, value in snr.flux.iteritems():
-                print key, value
                 col = Column(name = "flux_{0}".format(key), data = [value])
-                print col
                 t.add_column(col)
         t.write(output_file, format=file_ext)
 
@@ -415,8 +415,6 @@ def make_plots(snrs):
         local_exclude = Coords()
         if len(snr.exclude.x):
             local_exclude.x, local_exclude.y = w.wcs_world2pix(zip(snr.exclude.x,snr.exclude.y),0).transpose()
-        print local_exclude.x, local_exclude.y
-        print local_sources.x, local_sources.y
 
 # Using http://docs.astropy.org/en/stable/visualization/wcsaxes/index.html
         fig = plt.figure(figsize=(6,6))
