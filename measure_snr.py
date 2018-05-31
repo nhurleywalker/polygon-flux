@@ -77,14 +77,14 @@ def fit_spectrum(freq_array,flux_array,flux_errors): #,plot):
 # Allow me to display the figure in the centre of the screen, more pleasant than at a random location
 def newfigure(num=None,**args):
        hfig = plt.figure(num,**args)
-# TODO: Make this work for typical window managers
-# Or fail gracefully in the case of not knowing which function to call
-       plt.get_current_fig_manager().window.set_position("GTK_WIN_POS_CENTER")
-       plt.get_current_fig_manager().window.resize(1000,500)
+       try:
+           plt.get_current_fig_manager().window.set_position("GTK_WIN_POS_CENTER")
+           plt.get_current_fig_manager().window.resize(1000,500)
+       except:
+           print "GTK manager not being used, can't put window in the centre."
        return hfig
 
 def poly_plots(snrs):
-    snrs2 = []
     for snr in snrs:
         print "Fitting polygons and sources to "+snr.name
         white = fits.open("white/"+snr.name+".fits")
@@ -113,8 +113,6 @@ def poly_plots(snrs):
             vmax = svmax.val
             img_white.set_clim([svmin.val, svmax.val])
             fig.canvas.draw()
-# TODO: Turn this on or off
-#        fig = plt.figure()
         fig = newfigure(figsize=(10,5))
         ax_white = fig.add_axes([0.05,0.15,0.4,0.8])
         ax_rgb = fig.add_axes([0.55,0.15,0.4,0.8])
@@ -174,7 +172,6 @@ def poly_plots(snrs):
         else:
 # User has got bored of picking polygons and wants to exit this loop
             print "No polygon detected; leaving polygon-drawing mode."
-            snrs = snrs2
             break
             
         if len(polypick.points.x):
@@ -185,9 +182,8 @@ def poly_plots(snrs):
         snr.polygon = polygon
         snr.sources = sources
         snr.exclude = exclude
-        snrs2.append(snr)
 
-    return snrs2 # Is this necessary?
+    return snrs
 
 def update_text_file(snr, outtype):
     if outtype == "latex":
@@ -245,8 +241,6 @@ def do_fit(colors,snr,normfreq):
     logfreqs = np.log([f/normfreq for f in freqs])
     logfluxes = np.log(fluxes)
 
-    print freqs
-    print fluxes
 # 10% errors to start with
     fluxerrors = [0.1*s for s in fluxes]
     alpha, err_alpha, amp, err_amp, chi2red = fit_spectrum(logfreqs,logfluxes,0.1)
@@ -259,6 +253,11 @@ def do_fit(colors,snr,normfreq):
 def fit_fluxes(snrs):
     normfreq = 150000000. # 150 MHz
     for snr in snrs:
+# Run this anyway, just so we can get all of the masked images
+        colors = ["white", "red", "green", "blue"]
+        snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr,normfreq)
+
+# Then immediately overwrite with the sub-band fits
         print "Fitting spectrum to flux densities from "+snr.name
         colors = ["072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
         snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr,normfreq)
@@ -316,7 +315,7 @@ def fit_fluxes(snrs):
     return snrs
 
 # Naming convention for outputfiles
-# npzs/<snr.name><.npz><.ii>
+# type/<snr.name><.type><.ii>
 # where ii is a 2-digit integer
 def renumber(output_file):
    # name, file_ext = os.path.splitext(output_file)
@@ -333,7 +332,6 @@ def renumber(output_file):
        shutil.move(fl, "{0}.{1:02d}".format(pn,ii))
 
 def export_snrs(snrs):
-    print "Exporting SNR catalogue"
     file_ext = "pkl"
     output_dir = "pkls/"
     for snr in snrs:
@@ -349,7 +347,6 @@ def export_snrs(snrs):
         print "Writing FITS catalogue for {0}".format(snr.name)
         if os.path.exists(output_file):
             renumber(output_file)
-# FINISH THIS
         if snr.fit is None:
             sf = ""
             sa = ""
@@ -367,7 +364,6 @@ def export_snrs(snrs):
                 col = Column(name = "flux_{0}".format(key), data = [value])
                 print col
                 t.add_column(col)
-    # Still to output, probably in a different table: self.flux = None # A dictionary of frequencies to flux densities
         t.write(output_file, format=file_ext)
 
 def import_snr(snr):
@@ -386,30 +382,23 @@ def make_plots(snrs):
     for snr in snrs:
         print "Making attractive FITS image plot for "+snr.name
 # Load image data
+        mask = fits.open("white/"+snr.name+"_mask.fits")
         white = fits.open("white/"+snr.name+".fits")
-        white_interp = fits.open("white/"+snr.name+"_interp.fits")
         red = fits.open("red/rpj/"+snr.name+".fits")
-        red_interp = fits.open("red/rpj/"+snr.name+"_interp.fits")
         green = fits.open("green/rpj/"+snr.name+".fits")
-        green_interp = fits.open("green/rpj/"+snr.name+"_interp.fits")
         blue = fits.open("blue/rpj/"+snr.name+".fits")
-        blue_interp = fits.open("blue/rpj/"+snr.name+"_interp.fits")
+        mask_data = mask[0].data
+# Set mask data to 1.0, NaNs will not be plotted
+        mask_data[np.where(np.logical_not(np.isnan(mask_data)))] = 1.0
         white_data = white[0].data
-        white_interp_data = white_interp[0].data
         red_data = red[0].data
-        red_interp_data = red_interp[0].data
         green_data = green[0].data
-        green_interp_data = green_interp[0].data
         blue_data = blue[0].data
-        blue_interp_data = blue_interp[0].data
         rgb = np.dstack([red_data,green_data,blue_data])
-        rgb_interp = np.dstack([red_interp_data,green_interp_data,blue_interp_data])
         # Subtract minimum value (usually negative) in order to make the plotting nice
-        rgb -= np.min([np.nanmin(rgb),np.nanmin(rgb_interp)])
-        rgb_interp -= np.min([np.nanmin(rgb),np.nanmin(rgb_interp)])
+        rgb -= np.min(np.nanmin(rgb))
         # Divide by maximum value to normalise
-        rgb /= np.max([np.nanmax(rgb),np.nanmax(rgb_interp)])
-        rgb_interp /= np.max([np.nanmax(rgb),np.nanmax(rgb_interp)])
+        rgb /= np.max(np.nanmax(rgb))
 ## Get relevant header info
 ## Later: add bmaj bmin as ellipse
         xmax = white[0].header["NAXIS1"]
@@ -430,37 +419,58 @@ def make_plots(snrs):
         print local_sources.x, local_sources.y
 
 # Using http://docs.astropy.org/en/stable/visualization/wcsaxes/index.html
-        fig = plt.figure()
+        fig = plt.figure(figsize=(6,6))
+        fig.set_tight_layout(True)
         ax_white = fig.add_subplot(221, projection=w)
-        ax_white_interp = fig.add_subplot(222, projection=w)
+        ax_white_mask = fig.add_subplot(222, projection=w)
         ax_rgb = fig.add_subplot(223, projection=w)
-        ax_rgb_interp = fig.add_subplot(224, projection=w)
+        ax_rgb_mask = fig.add_subplot(224, projection=w)
         img_white = ax_white.imshow(white_data, cmap="gray",origin="lower")
-        img_white_interp = ax_white_interp.imshow(white_interp_data, cmap="gray",origin="lower")
+        img_white_mask = ax_white_mask.imshow(white_data, cmap="gray",origin="lower")
+        img_white_mask = ax_white_mask.imshow(mask_data, cmap="Blues",origin="lower", alpha = 0.2)
         img_rgb = ax_rgb.imshow(rgb,origin="lower")
-        img_rgb_interp = ax_rgb_interp.imshow(rgb_interp,origin="lower")
-        for ax in ax_white, ax_white_interp, ax_rgb, ax_rgb_interp:
-            overlay = ax.get_coords_overlay("galactic")
-            overlay.grid(axes = ax, color='white', ls='dotted')
-            ax.set_xlim(0,xmax)
-            ax.set_ylim(0,ymax)
+        img_rgb_mask = ax_rgb_mask.imshow(rgb,origin="lower")
+        img_rgb_mask = ax_rgb_mask.imshow(mask_data, cmap="Blues",origin="lower", alpha = 0.2)
+        for ax in ax_white_mask, ax_rgb_mask:
             if len(local_polygon.x):
                 ax.plot(local_polygon.x,local_polygon.y,**restsnr)
             if len(local_sources.x):
                 ax.plot(local_sources.x,local_sources.y,**srcmark)
             if len(local_exclude.x):
                 ax.plot(local_exclude.x,local_exclude.y,**restexc)
+# Tedious removal of axis labels
+        axes = [ax_white, ax_white_mask, ax_rgb, ax_rgb_mask]
+        latleft = [ True, False, True, False ]
+        latright = [ False, True, False, True ]
+        lonbottom = [ False, False, True, True ]
+        lontop = [ True, True, False, False ]
+        for ax, lal, lar, lob, lot in zip(axes, latleft, latright, lonbottom, lontop):
+            ax.set_xlim(0,xmax)
+            ax.set_ylim(0,ymax)
+            lon = ax.coords['ra']
+            lat = ax.coords['dec']
+            if lob:
+                lon.set_axislabel("RAJ2000")
+            if lal:
+                lat.set_axislabel("DEJ2000")
+            lon.set_ticklabel_visible(lob)
+            lat.set_ticklabel_visible(lal)
+            lon.set_ticks_visible(lob)
+            lat.set_ticks_visible(lal)
+            overlay = ax.get_coords_overlay("fk5")
+            overlay.grid(axes = ax, color='white', ls='dotted')
+            overlay["ra"].set_ticklabel_visible(lot)
+            overlay["dec"].set_ticklabel_visible(lar)
+
         output_file = "plots/"+snr.name+".png"
         if os.path.exists(output_file):
             renumber(output_file)
-        fig.savefig(output_file)
+        fig.tight_layout(pad=1.0, w_pad=1.0, h_pad=1.0)
+#        fig2.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
+#        fig1.savefig("int_flux_ratio.png",pad_inches=0.1,bbox_inches="tight")
+#        fig2.savefig("divergence.png",pad_inches=0.1,bbox_inches="tight")
 
-#       figure out what plots I actually want:
-#       some combination of:
-#             - white vs rgb
-#             - with annotations vs without
-#             - with interpolation over the background vs without
-#       to plot all would currently be eight different plots which is a bit ridiculous!
+        fig.savefig(output_file,pad_inches=0.1,bbox_inches="tight")
 
 
 if __name__ == "__main__":
