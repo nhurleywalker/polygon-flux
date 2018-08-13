@@ -25,9 +25,9 @@ from defs import read_snrs
 def reproject_snrs(snrs):
     clobber=False
     padding = 1.4
+#    colors = ["072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
     colors = ["white", "red", "green", "blue", "072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
-    colors = ["072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
-    fitsdir = "/home/tash/data/MWA/GLEAM/GP/Week4/rgb/"
+    fitsdir = "/home/tash/data/MWA/GLEAM/GP/Week4/rgb/new_polys/"
 
     for color in colors:
         print "Reprojecting "+color+" image"
@@ -52,7 +52,7 @@ def reproject_snrs(snrs):
             print "Reprojecting "+snr.name
     # No point doing the ones not in my search region
             l = snr.loc.galactic.l.value
-            if (((l>180) and (l<240)) or (l>340) or (l<60)):
+            if (((l>180) and (l<240)) or (l>300) or (l<60)):
                 name = snr.name+".fits"
                 if clobber or not os.path.exists(color+"/"+name):
         # Week4 for GC SNR; Week2 for anticentre SNR
@@ -91,7 +91,12 @@ def reproject_snrs(snrs):
                     header_new["FREQ"] = hdu[0].header["FREQ"]
                     new = fits.PrimaryHDU(cutout.data,header=header_new) #create new hdu
                     newlist = fits.HDUList([new]) #create new hdulist
-                    newlist.writeto(color+"/"+name, overwrite = True)
+                    try:
+                        newlist.writeto(color+"/"+name, overwrite = True)
+# For some reason I get:
+# NameError: global name 'VerifyError' is not defined
+                    except:
+                        print "Invalid fits keys for {0} at {1}".format(snr.name,color)
                     
                 # Reproject the other colours
                     if color != "white":
@@ -103,6 +108,7 @@ def reproject_snrs(snrs):
                             oldhdr = fits.open(oldfile)[0].header
                             newhdu = fits.open(newfile)
                             newhdr = newhdu[0].header
+# This copies ALL the fits keys across, including the beam values! So we need to replace those with the original values
                             for fitskey in ["BMAJ", "BMIN", "BPA", "FREQ"]:
                                 newhdr[fitskey] = oldhdr[fitskey]
                             newhdu.writeto(newfile, overwrite = True)
@@ -111,7 +117,6 @@ def reproject_snrs(snrs):
 #                        except MontageError:
                         except:
                             print "Montage reprojection failed for {0} at {1}".format(snr.name,color)
-    # This copies ALL the fits keys across, including the beam values! So we need to replace those with the original values
 
 if __name__ == "__main__":
     # Load the snrs fresh from the files
