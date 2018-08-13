@@ -36,6 +36,9 @@ from defs import PolyPick
 from defs import create_index_array
 from defs import find_fluxes
 
+# Normalisation frequency for all functions
+normfreq = 150000000. # 150 MHz
+
 # Line markers and colors
 firstsnr = { "marker" : "x" , "linestyle" : "None", "color" : "white" }
 restsnr = { "marker" : "None" , "linestyle" : "-", "color" : "white" }
@@ -136,7 +139,8 @@ def poly_plots(snrs):
 
         fig.suptitle('Left-click = select source, middle-click = source subtract, right-click = select region to exclude from background calculation')
 
-        centerx, centery = w.wcs_world2pix(snr.loc.galactic.l.value,snr.loc.galactic.b.value,0)
+        centerx, centery = w.wcs_world2pix(snr.loc.ra.value,snr.loc.dec.value,0)
+        print centerx, centery
 
         major, minor = snr.maj/(2*pix2deg) , snr.min/(2*pix2deg)
         for ax in ax_white, ax_rgb:
@@ -223,95 +227,129 @@ def update_text_file(snr, outtype):
             output_file.write(outformat.format(*outvars))
 # TODO: sort the output file by some index -- galactic longitude then latitude?
 
-def do_fit(colors,snr,normfreq):
+def do_fit(colors,snr):
     freqs = []
     fluxes = []
     bkg = []
     rms = []
+    nbeams = []
     for color in colors:
         if color == "white":
             fitsfile = color+"/"+snr.name+".fits"
         else:
             fitsfile = color+"/rpj/"+snr.name+".fits"
-        hdu = fits.open(fitsfile)
-        freqs.append(hdu[0].header["FREQ"])
-        final_flux, total_flux, source_flux, bkg_flux, rms_flux = find_fluxes(snr.polygon, snr.sources, snr.exclude, fitsfile)
-        fluxes.append(final_flux)
-        bkg.append(bkg_flux)
-        rms.append(rms_flux)
+        if os.path.exists(fitsfile):
+            hdu = fits.open(fitsfile)
+            freqs.append(hdu[0].header["FREQ"])
+            final_flux, total_flux, bkg_flux, rms_flux, nbeam = find_fluxes(snr.polygon, snr.sources, snr.exclude, fitsfile)
+            fluxes.append(final_flux)
+            bkg.append(bkg_flux)
+            rms.append(rms_flux)
+            nbeams.append(nbeam)
+        else:
+            print "Unable to fit flux for {0} in {1}".format(snr.name, color)
 
     logfreqs = np.log([f/normfreq for f in freqs])
     logfluxes = np.log(fluxes)
 
 #    fluxerrors = [0.1*s for s in fluxes]
-    fluxerrors = [np.sqrt((0.02*s)**2+(r)) for s,r in zip(fluxes,rms)]
-    alpha, err_alpha, amp, err_amp, chi2red = fit_spectrum(logfreqs,logfluxes,0.1)
+    fluxerrors = [np.sqrt((0.02*s)**2+n*(r**2)) for s,r,n in zip(fluxes,rms,nbeams)]
+    logfluxerrors = [ e / f for e,f in zip (fluxerrors, fluxes)]
+    alpha, err_alpha, amp, err_amp, chi2red = fit_spectrum(logfreqs,logfluxes,logfluxerrors)
 # Save to SNR object for later
     snr.flux = dict(zip(freqs, fluxes))
     snr.bkg = dict(zip(freqs, bkg))
     snr.rms = dict(zip(freqs, rms))
+    snr.nbeams = dict(zip(freqs, nbeams))
 
     return snr, alpha, err_alpha, amp, err_amp, chi2red
 
 def fit_fluxes(snrs):
-    normfreq = 150000000. # 150 MHz
     for snr in snrs:
 # Run this anyway, just so we can get all of the masked images
         colors = ["white", "red", "green", "blue"]
-        snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr,normfreq)
+        snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr)
+        if alpha:
+            flux150 = np.exp(amp)
+            flux150err = err_amp * flux150
+            snr.fit = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
+    # Might as well save the plots
+        plot_spectrum(snr)
 
 # Then immediately overwrite with the sub-band fits
         print "Fitting spectrum to flux densities from "+snr.name
         colors = ["072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
-        snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr,normfreq)
-
-        print "Reduced chi2 of fit: {0}".format(chi2red)
-# If fitting across all the sub-bands failed, use just the wideband images
-        if not alpha or chi2red > 1.93:
-            colors = ["white", "red", "green", "blue"]
-            print "Sub-band fit failed: using wideband images."
-            snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr,normfreq)
-
-        # frequencies for plotting
-        freqs = snr.flux.keys()
-        fluxes = snr.flux.values()
-        bkg = snr.bkg.values()
-        rms = snr.rms.values()
-        fluxerrors = [np.sqrt((0.02*s)**2+(r)) for s,r in zip(fluxes,rms)]
-        plotfreqs = np.linspace(0.9*np.min(freqs),1.1*np.max(freqs),200)
-
-        if alpha:
+        snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr)
+        if alpha is not None:
             flux150 = np.exp(amp)
             flux150err = err_amp * flux150
-            print "Spectrum fit, making plot for "+snr.name
-            outpng = ("./spectra/"+snr.name+".png")
-            # Plot
-            fig = plt.figure(figsize=(10,5))
-            # LaTeX-safe
-            fig.suptitle(snr.name.replace("_","\,"))
-            ax1 = fig.add_subplot(1,2,1)
-            ax2=fig.add_subplot(1,2,2)
-            ax2.set_xscale("log")
-            ax2.set_yscale("log")
-            for ax in ax1, ax2:
-                ax.plot(plotfreqs, powerlaw(plotfreqs, flux150/(normfreq**alpha), alpha),label="alpha=${0:3.1f}$ ".format(alpha))     # Scipy Fit
-                ax.errorbar(freqs, bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
-                ax.errorbar(freqs, fluxes, yerr=fluxerrors, fmt = "k.") # Data
-                ax.set_ylabel("S / Jy")
-                ax.set_xlabel("Frequency / MHz")
-                ax.legend()
-            ax2.set_xlim(0.8*np.min(freqs), 1.2*np.max(freqs))
-            ax2.set_ylim(0.3*np.min([np.min(fluxes),np.min(bkg)]),3*np.max([np.max(fluxes),np.max(bkg)]))
-            if os.path.exists(outpng):
-                renumber(outpng)
-            fig.savefig(outpng)
-            fig.clf()
-        
+            print "Reduced chi2 of fit: {0}".format(chi2red)
+        plot_spectrum(snr)
+
+# If fitting across all the sub-bands failed, use just the wideband images
+#        if not alpha or chi2red > 1.93:
+# I think you only want to do this if the fitting totally failed, since you get the same result
+        if alpha is None:
+            colors = ["white", "red", "green", "blue"]
+            print "Sub-band fit failed: using wideband images."
+            snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr)
+            if alpha is not None:
+                flux150 = np.exp(amp)
+                flux150err = err_amp * flux150
+
+        if alpha is not None:
             snr.fit = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
-# Add table output
             for outtype in ["latex", "csv"]:
                 update_text_file(snr, outtype)
+        else:
+            print "Spectrum could not be fit for {0}.".format(snr.name)
+# Add table output
     return snrs
+
+def plot_spectrum(snr):
+    # frequencies for plotting
+    freqs = snr.flux.keys()
+    fluxes = snr.flux.values()
+    bkg = snr.bkg.values()
+    rms = snr.rms.values()
+    nbeams = snr.nbeams.values()
+# Nice feature would be to have shading indicating the range of possible fits
+#    fluxerr = snr.fit["fluxerr"]
+#    alphaerr = snr.fit["alphaerr"]
+    if snr.fit is not None:
+        flux150 = snr.fit["flux"]
+        alpha = snr.fit["alpha"]
+    #fluxerrors = [np.sqrt((0.02*s)**2+(r**2)) for s,r in zip(fluxes,rms)]
+    fluxerrors = [np.sqrt((0.02*s)**2+n*(r**2)) for s,r,n in zip(fluxes,rms,nbeams)]
+    plotfreqs = np.linspace(0.9*np.min(freqs),1.1*np.max(freqs),200)
+
+    print "Spectrum fit, making plot for "+snr.name
+    if len(freqs) > 4:
+        outpng = ("./spectra/"+snr.name+".png")
+    else:
+        outpng = ("./spectra/"+snr.name+"_wide.png")
+    # Plot
+    fig = plt.figure(figsize=(10,5))
+    # LaTeX-safe
+    fig.suptitle(snr.name.replace("_","\,"))
+    ax1 = fig.add_subplot(121)
+    ax2 = fig.add_subplot(122)
+    ax2.set_xscale("log")
+    ax2.set_yscale("log")
+    for ax in ax1, ax2:
+        if snr.fit is not None:
+            ax.plot(plotfreqs, powerlaw(plotfreqs, flux150/(normfreq**alpha), alpha),label="alpha=${0:3.2f}$ ".format(alpha))     # Scipy Fit
+            ax.legend()
+        ax.errorbar(freqs, bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
+        ax.errorbar(freqs, fluxes, yerr=fluxerrors, fmt = "k.") # Data
+        ax.set_ylabel("S / Jy")
+        ax.set_xlabel("Frequency / MHz")
+    ax2.set_xlim(0.8*np.min(freqs), 1.2*np.max(freqs))
+    ax2.set_ylim(0.3*np.min([np.min(fluxes),np.min(bkg)]),3*np.max([np.max(fluxes),np.max(bkg)]))
+    if os.path.exists(outpng):
+        renumber(outpng)
+    fig.savefig(outpng)
+    fig.clf()
 
 # Naming convention for outputfiles
 # types/<snr.name><.type><.ii>
@@ -330,10 +368,31 @@ def renumber(output_file):
            pn = fl
        shutil.move(fl, "{0}.{1:02d}".format(pn,ii))
 
-def export_snrs(snrs):
-    file_ext = "pkl"
-    output_dir = "pkls/"
+def filter_latitude(snrs):
+    filtered = []
     for snr in snrs:
+        l = snr.loc.galactic.l.value
+        if (((l>180) and (l<240)) or (l>340) or (l<60)):
+            filtered.append(snr)
+    return filtered
+       
+def test_export_snr(snrs):
+    tempsnrs = []
+    for snr in snrs:
+        file_ext = "pkl"
+        output_dir = "pkls/"
+        output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
+        if os.path.exists(output_file):
+            print "{0} has already been written.".format(snr.name)
+        else:
+            print "{0} will be measured.".format(snr.name)
+            tempsnrs.append(snr)
+    return tempsnrs
+
+def export_snrs(snrs):
+    for snr in snrs:
+        file_ext = "pkl"
+        output_dir = "pkls/"
         print "Pickling {0}".format(snr.name)
         output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
         if os.path.exists(output_file):
@@ -471,8 +530,10 @@ if __name__ == "__main__":
     group1 = parser.add_argument_group("functions to perform")
     group1.add_argument('--poly', dest='poly', default=False, action='store_true',
                         help="Draw polygons on the supernova remnants instead of simply loading from file (default = False)")
+    group1.add_argument('--overdraw', dest='overdraw', default=False, action='store_true',
+                        help="Draw polygons even if a SNR has already been measured (default = False)")
     group1.add_argument('--fluxfit', dest='fluxfit', default=False, action='store_true',
-                        help="Fit SEDs to the SNRs, create interpolated background images and make spectral plots (default=False)")
+                        help="Subtract backgrounds and sources, fit SEDs to the SNR flux densities, and make spectral plots (default=False)")
     group1.add_argument('--export', dest='export', default=False, action='store_true',
                         help="Save the resulting polygons, source locations, flux densities, etc to npz files (default=False)")
     group1.add_argument('--plot', dest='makeplots', default=False, action='store_true',
@@ -506,17 +567,28 @@ if __name__ == "__main__":
     if len(sys.argv) <= 1:
         parser.print_help()
         sys.exit()
- 
     snrs = read_snrs()
+
+# Filter those outside of my search range
+
+    snrs = filter_latitude(snrs)
+
     updated_snrs = []
     for snr in snrs:
         snr = import_snr(snr)
         updated_snrs.append(snr)
     snrs = updated_snrs
 
+    print "Read {0} SNRs".format(len(snrs))
     # Do all the interactive plotting and fitting
     if options.poly:
+    # Don't overwrite polygons for already-measured SNRs
+        if not options.overdraw:
+            print "Overdraw not selected: filtering out SNRs which have already been fitted."
+            print "Rerun without --poly if you wanted to re-measure their flux densities without drawing."
+            snrs = test_export_snr(snrs)
     # Only snrs which have been fitted will be returned by the function
+        print "Measuring {0} SNRs".format(len(snrs))
         snrs = poly_plots(snrs)
 
     # Fit flux densities across the band using the measured polygons

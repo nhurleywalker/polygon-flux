@@ -53,7 +53,15 @@ class SNR(object):
         self.flux = None # A dictionary of frequencies to flux densities
         self.bkg = None # A dictionary of frequencies to background flux densities
         self.rms = None # A dictionary of frequencies to local RMS measurements
+        self.nbeams = None # A dictionary of frequencies to number of PSFs fit over
         self.fit = None # A dictionary of "flux" -> total flux at 150 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
+
+def gaussian2d(x, y, mux, muy, sigmax, sigmay, theta):
+   a = np.cos(theta)**2 / (2*sigmax**2) + np.sin(theta)**2 / (2*sigmay**2)
+   b = -np.sin(2*theta) / (4*sigmax**2) + np.sin(2*theta) / (4*sigmay**2)
+   c = np.sin(theta)**2 / (2*sigmax**2) + np.cos(theta)**2 / (2*sigmay**2)
+   g = np.exp(-(a*(x-mux)**2 + 2*b*(x-mux)*(y-muy) + c*(y-muy)**2))
+   return g
 
 def is_non_zero_file(fpath):  
     return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
@@ -68,9 +76,9 @@ def read_snrs():
     snrs = []
 
     if is_non_zero_file("DAG.txt"):
-        tempcat = np.genfromtxt("DAG.txt", delimiter=(6,6,4,3,3,5,3))
+        tempcat = np.genfromtxt("DAG.txt", delimiter=(6,6,4,3,3,5,3), comments="#")
         # Elliptical radii
-        sizestrs = np.genfromtxt("DAG.txt",usecols=7,dtype=str)
+        sizestrs = np.genfromtxt("DAG.txt",usecols=7,dtype=str, comments="#")
 # Makes it work for single-line files
         ac = 1
         if not len(sizestrs.shape):
@@ -105,7 +113,7 @@ def read_snrs():
 
     # Get the candidate SNRs from my text file
     if is_non_zero_file("candidates.txt"):
-        tempcat = np.loadtxt("candidates.txt")
+        tempcat = np.loadtxt("candidates.txt", comments="#")
 # Makes it work for single-line files
         if len(tempcat.shape)==1:
            tempcat = [tempcat]
@@ -188,6 +196,25 @@ class PolyPick:
 def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     print fitsfile
     hdu = fits.open(fitsfile)
+
+# Set any NaN areas to zero or the interpolation will fail
+    hdu[0].data[np.isnan(hdu[0].data)] = 0.0
+
+# Get vital stats of the fits file
+    bmaj = hdu[0].header["BMAJ"]
+    bmin = hdu[0].header["BMIN"]
+    bpa = hdu[0].header["BPA"]
+    xmax = hdu[0].header["NAXIS1"]
+    ymax = hdu[0].header["NAXIS2"]
+    try:
+        pix2deg = hdu[0].header["CD2_2"]
+    except KeyError:
+        pix2deg = hdu[0].header["CDELT2"]
+# Montaged images use PC instead of CD
+    if pix2deg == 1.0:
+        pix2deg = hdu[0].header["PC2_2"]
+    beamvolume = (1.1331 * bmaj * bmin) # gaussian beam conversion
+
     # Transform the polygon and source arrays into local pixel co-ordinates for further operations
     w = wcs.WCS(hdu[0].header)
     local_polygon = Coords()
@@ -202,7 +229,48 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     indexes = create_index_array(hdu)
     # Adapted from https://stackoverflow.com/questions/36399381/whats-the-fastest-way-of-checking-if-a-point-is-inside-a-polygon-in-python
     path = mpltPath.Path(zip(local_polygon.x,local_polygon.y))
+# Array of booleans of length len(indexes)
     inside = path.contains_points(indexes)
+
+# New feature: nuke sources first, then do the rest
+    for x,y in zip(local_sources.x,local_sources.y):
+        if path.contains_points([[x,y]]):
+            grid_x, grid_y = np.mgrid[0:xmax:1, 0:ymax:1]
+#            radius = bmaj/pix2deg
+# Exclude all indices inside the source from the interpolation
+# TODO: maybe change this so it's more the shape of the PSF, to avoid wrecking perfectly useable bits of the image?
+            print x, y, bmaj/(2*pix2deg), bmin/(2*pix2deg), np.radians(bpa)
+            g2d = gaussian2d(grid_x, grid_y, y, x, bmaj/(2*pix2deg), bmin/(2*pix2deg), np.radians(180.-bpa))
+            g = np.ravel(g2d)
+            useforinterp = np.where(g < 0.1)
+#            notforinterp = np.where(g > 0.1)
+#            notforinterp = np.where(indexes.T[0]>(x-radius))
+#            notforinterp = np.intersect1d(notforinterp, np.where(indexes.T[0]<(x+radius)))
+#            notforinterp = np.intersect1d(notforinterp, np.where(indexes.T[1]<(y+radius)))
+#            notforinterp = np.intersect1d(notforinterp, np.where(indexes.T[1]>(y-radius)))
+#            useforinterp = np.setdiff1d(np.where(indexes),notforinterp)
+            flux_values = []
+            for ix in indexes[useforinterp]:
+                flux_values.append(hdu[0].data[ix[1],ix[0]])
+            interp = griddata(indexes[useforinterp], flux_values, (grid_x, grid_y), method="linear")
+            hdu[0].data = interp.T
+#            data_patch = hdu[0].data[np.floor(y-bmaj/pix2deg).astype(int):np.ceil(y+bmaj/pix2deg).astype(int),np.floor(x-bmaj/pix2deg).astype(int):np.ceil(x+bmaj/pix2deg).astype(int)]
+#            peak_flux = np.max(data_patch) # In Jy/pix, but we assume the sources are unresolved
+   # Save gaussian as a FITS file
+#    header_new = hdu[0].header
+#    new = fits.PrimaryHDU(g2d,header=header_new) #create new hdu
+#    outname = fitsfile.replace(".fits","_gauss.fits")
+#    newlist = fits.HDUList([new]) #create new hdulist
+#    newlist.writeto(outname,overwrite=True)
+
+   # Save source-interpolated as a FITS file
+    header_new = hdu[0].header
+        # Add a keyword so we know this one has been backgrounded
+    header_new["INTERP"] = "TRUE"
+    new = fits.PrimaryHDU(hdu[0].data,header=header_new) #create new hdu
+    outname = fitsfile.replace(".fits","_interp.fits")
+    newlist = fits.HDUList([new]) #create new hdulist
+    newlist.writeto(outname,overwrite=True)
 
     if len(local_exclude.x):
         epath = mpltPath.Path(zip(local_exclude.x,local_exclude.y))
@@ -215,22 +283,9 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     for ix in indexes[np.where(inside)]:
        if not np.isnan(hdu[0].data[ix[1],ix[0]]):
            total_flux += hdu[0].data[ix[1],ix[0]] # In Jy/pix
-       else:
-           print "WARNING, NAN detected at x = {0}, y={1}!".format(ix[0], ix[1])
+#       else:
+#           print "WARNING, NAN detected at x = {0}, y={1}!".format(ix[0], ix[1])
        
-    bmaj = hdu[0].header["BMAJ"]
-    bmin = hdu[0].header["BMIN"]
-    xmax = hdu[0].header["NAXIS1"]
-    ymax = hdu[0].header["NAXIS2"]
-    try:
-        pix2deg = hdu[0].header["CD2_2"]
-    except KeyError:
-        pix2deg = hdu[0].header["CDELT2"]
-# Montaged images use PC instead of CD
-    if pix2deg == 1.0:
-        pix2deg = hdu[0].header["PC2_2"]
-    beamvolume = (1.1331 * bmaj * bmin) # gaussian beam conversion
-
     total_flux = total_flux * (pix2deg**2) / beamvolume
     npix = indexes[np.where(inside)].shape[0]
     nbeams = npix * (pix2deg**2) / beamvolume
@@ -274,26 +329,26 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     newlist = fits.HDUList([new]) #create new hdulist
     newlist.writeto(outname,overwrite=True)
 
-    source_flux = 0.0
-    for x,y in zip(local_sources.x,local_sources.y):
-       if path.contains_points([[x,y]]):
-    # Search for the local maximum within a beam-width
-    # TODO: modify this so it only does it for the white image, and then uses that location for all sources
-           data_patch = hdu[0].data[np.floor(y-bmaj/pix2deg).astype(int):np.ceil(y+bmaj/pix2deg).astype(int),np.floor(x-bmaj/pix2deg).astype(int):np.ceil(x+bmaj/pix2deg).astype(int)]
-           peak_flux = np.max(data_patch) # In Jy/pix, but we assume the sources are unresolved
-#    # Need the background level at this point
+#    source_flux = 0.0
+#    for x,y in zip(local_sources.x,local_sources.y):
+#       if path.contains_points([[x,y]]):
+#    # Search for the local maximum within a beam-width
+#    # Potential future improvement: modify this so it only does it for the white image, and then uses that location for all sources
+#           data_patch = hdu[0].data[np.floor(y-bmaj/pix2deg).astype(int):np.ceil(y+bmaj/pix2deg).astype(int),np.floor(x-bmaj/pix2deg).astype(int):np.ceil(x+bmaj/pix2deg).astype(int)]
+#           peak_flux = np.max(data_patch) # In Jy/pix, but we assume the sources are unresolved
+##
+##           bkg_index = np.unravel_index(data_patch.argmax(), data_patch.shape)
+##           interp_patch = interp.T[np.floor(y-bmaj/pix2deg).astype(int):np.ceil(y+bmaj/pix2deg).astype(int),np.floor(x-bmaj/pix2deg).astype(int):np.ceil(x+bmaj/pix2deg).astype(int)]
+##           bkg_at_src = interp_patch[bkg_index]
+##           source_flux += (peak_flux - bkg_at_src)
 #
-#           bkg_index = np.unravel_index(data_patch.argmax(), data_patch.shape)
-#           interp_patch = interp.T[np.floor(y-bmaj/pix2deg).astype(int):np.ceil(y+bmaj/pix2deg).astype(int),np.floor(x-bmaj/pix2deg).astype(int):np.ceil(x+bmaj/pix2deg).astype(int)]
-#           bkg_at_src = interp_patch[bkg_index]
-#           source_flux += (peak_flux - bkg_at_src)
+## Subtract the average surface brightness of the remnant from the source flux
+#           source_flux += (peak_flux - (total_flux / nbeams) )
 
-# Use the average background level instead
-# TODO: include the average surface brightness of the remnant
-           source_flux += (peak_flux - bkg_flux )
+    final_flux = total_flux - (bkg_flux * nbeams) # - source_flux
 
-    final_flux = total_flux - source_flux - (bkg_flux * nbeams)
+    #print "Number of beams searched: {0} \n Total flux density (Jy): {1} \n Total source flux density (Jy): {2} \n Background flux density (Jy): {3}\n Number of beams interpolated over after finding sources: {4}\n Final flux density (Jy): {5}".format(nbeams, total_flux, source_flux, bkg_flux, len(sources.x), final_flux)
+    print "Number of beams searched: {0} \n Total flux density (Jy): {1} \n Background flux density (Jy): {2}\n Number of beams interpolated over after finding sources: {3}\n Final flux density (Jy): {4}".format(nbeams, total_flux, bkg_flux, len(sources.x), final_flux)
 
-    print "Number of beams searched: {0} \n Total flux density (Jy): {1} \n Total source flux density (Jy): {2} \n Background flux density (Jy): {3}\n Number of beams masked after finding sources: {4}\n Final flux density (Jy): {5}".format(nbeams, total_flux, source_flux, bkg_flux, len(sources.x), final_flux)
-
-    return final_flux, total_flux, source_flux, bkg_flux, rms
+    #return final_flux, total_flux, source_flux, bkg_flux, rms
+    return final_flux, total_flux, bkg_flux, rms, nbeams
