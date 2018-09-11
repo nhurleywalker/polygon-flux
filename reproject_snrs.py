@@ -22,8 +22,7 @@ from defs import read_snrs
 # For each remnant, cut out the region around it in the white fits file
 # Then montage the red, green, and blue fits files to match the white
 
-def reproject_snrs(snrs):
-    clobber=False
+def reproject_snrs(snrs, clobber):
     padding = 1.4
 #    colors = ["072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
     colors = ["white", "red", "green", "blue", "072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
@@ -59,6 +58,9 @@ def reproject_snrs(snrs):
                     if ((l>180) and (l<240)):
                         psf = fits.open(fitsdir+"Week2_"+color+"_lownoise_comp_psf.fits")
                         hdu = fits.open(fitsdir+"Week2_"+color+"_lownoise_ddmod_rescaled.fits")
+# HACK
+#                        orig_hdu = fits.open(fitsdir+"Week2_"+color+"_lownoise_ddmod_rescaled.fits")
+#                        hdu = fits.open("/home/tash/data/MWA/GLEAM/allmosaics/SNR_G189.6+3.3/"+color+"/"+snr.name+".fits")
                     else:
                         psf = fits.open(fitsdir+"Week4_"+color+"_lownoise_comp_psf.fits")
                         hdu = fits.open(fitsdir+"Week4_"+color+"_lownoise_ddmod_rescaled.fits")
@@ -88,7 +90,9 @@ def reproject_snrs(snrs):
                     header_new["BMAJ"] = bmaj
                     header_new["BMIN"] = bmin
                     header_new["BPA"] = bpa
+#HACK
                     header_new["FREQ"] = hdu[0].header["FREQ"]
+#                    header_new["FREQ"] = orig_hdu[0].header["FREQ"]
                     new = fits.PrimaryHDU(cutout.data,header=header_new) #create new hdu
                     newlist = fits.HDUList([new]) #create new hdulist
                     try:
@@ -121,4 +125,5 @@ def reproject_snrs(snrs):
 if __name__ == "__main__":
     # Load the snrs fresh from the files
     snrs = read_snrs()
-    reproject_snrs(snrs)
+    clobber = True
+    reproject_snrs(snrs, clobber)

@@ -63,6 +63,12 @@ def gaussian2d(x, y, mux, muy, sigmax, sigmay, theta):
    g = np.exp(-(a*(x-mux)**2 + 2*b*(x-mux)*(y-muy) + c*(y-muy)**2))
    return g
 
+def normalize(arr, vmin, vmax):
+    nor = (arr - vmin) / (vmax - vmin)
+    nor[np.where(nor<0.0)] = 0.0
+    nor[np.where(nor>1.0)] = 1.0
+    return nor
+
 def is_non_zero_file(fpath):  
     return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
 # Read in the SNRs from files

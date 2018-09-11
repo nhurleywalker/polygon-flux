@@ -35,6 +35,7 @@ from defs import read_snrs
 from defs import PolyPick
 from defs import create_index_array
 from defs import find_fluxes
+from defs import normalize
 
 # Normalisation frequency for all functions
 normfreq = 150000000. # 150 MHz
@@ -106,10 +107,8 @@ def poly_plots(snrs):
             pix2deg = white[0].header["CD2_2"]
         except KeyError:
             pix2deg = white[0].header["CDELT2"]
-        # Subtract minimum value (usually negative) in order to make the plotting nice
-        rgb -= np.nanmin(rgb)
+        rgb = normalize(rgb, np.nanmin(rgb), np.nanmax(rgb))
         # Divide by maximum value to normalise
-        rgb /= np.nanmax(rgb)
 
         def update(val):
             vmin = svmin.val
@@ -248,7 +247,15 @@ def do_fit(colors,snr):
             nbeams.append(nbeam)
         else:
             print "Unable to fit flux for {0} in {1}".format(snr.name, color)
-
+# Check whether any flux densities are negative and skip if it's one or two
+    fluxes = np.array(fluxes)
+    freqs = np.array(freqs)
+    negative = len(np.where(fluxes<0))
+    if negative <= 2:
+        freqs = freqs[np.where(fluxes>0)]
+        fluxes = fluxes[np.where(fluxes>0)]
+    else:
+        print "more than one negative flux density -- going to get an error for narrowband fit."
     logfreqs = np.log([f/normfreq for f in freqs])
     logfluxes = np.log(fluxes)
 
@@ -283,6 +290,7 @@ def fit_fluxes(snrs):
         if alpha is not None:
             flux150 = np.exp(amp)
             flux150err = err_amp * flux150
+            snr.fit = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
             print "Reduced chi2 of fit: {0}".format(chi2red)
         plot_spectrum(snr)
 
@@ -303,7 +311,7 @@ def fit_fluxes(snrs):
                 update_text_file(snr, outtype)
         else:
             print "Spectrum could not be fit for {0}.".format(snr.name)
-# Add table output
+
     return snrs
 
 def plot_spectrum(snr):
@@ -319,6 +327,7 @@ def plot_spectrum(snr):
     if snr.fit is not None:
         flux150 = snr.fit["flux"]
         alpha = snr.fit["alpha"]
+    print alpha
     #fluxerrors = [np.sqrt((0.02*s)**2+(r**2)) for s,r in zip(fluxes,rms)]
     fluxerrors = [np.sqrt((0.02*s)**2+n*(r**2)) for s,r,n in zip(fluxes,rms,nbeams)]
     plotfreqs = np.linspace(0.9*np.min(freqs),1.1*np.max(freqs),200)
@@ -413,7 +422,10 @@ def export_snrs(snrs):
             sf = snr.fit["flux"]
             sa = snr.fit["alpha"]
             sc = snr.fit["chi2red"]
+        print sa
         t = Table([[snr.name], [snr.loc.ra.value], [snr.loc.dec.value], [snr.maj], [snr.min], [snr.known], [sf], [sa], [sc]], names=("Name", "RAJ2000", "DEJ2000", "major", "minor", "known", "flux_fitted", "alpha", "chi2red"))
+        print t
+        print output_file
         if snr.flux is not None:
             for key, value in snr.flux.iteritems():
                 col = Column(name = "flux_{0}".format(key), data = [value])
@@ -423,7 +435,8 @@ def export_snrs(snrs):
 def import_snr(snr):
     print "Checking for existing measurements for {0}".format(snr.name)
     file_ext = "pkl"
-    input_dir = "pkls"
+#HACK
+    input_dir = "/home/tash/Dropbox/MWA/SNR_search/pkls"
     input_file = "{0}/{1}.{2}".format(input_dir, snr.name, file_ext)
     if os.path.exists(input_file):
         ifile = open(input_file, "rb")
@@ -449,10 +462,7 @@ def make_plots(snrs):
         green_data = green[0].data
         blue_data = blue[0].data
         rgb = np.dstack([red_data,green_data,blue_data])
-        # Subtract minimum value (usually negative) in order to make the plotting nice
-        rgb -= np.min(np.nanmin(rgb))
-        # Divide by maximum value to normalise
-        rgb /= np.max(np.nanmax(rgb))
+        rgb = normalize(rgb, np.nanmin(rgb), np.nanmax(rgb))
 ## Get relevant header info
 ## Later: add bmaj bmin as ellipse
         xmax = white[0].header["NAXIS1"]
@@ -591,6 +601,8 @@ if __name__ == "__main__":
         print "Measuring {0} SNRs".format(len(snrs))
         snrs = poly_plots(snrs)
 
+    for snr in snrs:
+        print snr.fit["alpha"]
     # Fit flux densities across the band using the measured polygons
     if options.fluxfit:
         fitsnrs = []
@@ -601,6 +613,8 @@ if __name__ == "__main__":
             else:
                 print "No measured polygons for {0}, cannot fit fluxes".format(snr.name)
         snrs = fit_fluxes(fitsnrs)
+    for snr in snrs:
+        print snr.fit["alpha"]
 
     if options.export:
         export_snrs(snrs)
