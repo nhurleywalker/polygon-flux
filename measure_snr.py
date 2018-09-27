@@ -59,17 +59,28 @@ def powerlaw(x,amp,index):
 
 def fit_spectrum(freq_array,flux_array,flux_errors): #,plot):
     pinit = [3.0, -0.7]
-    fit = leastsq(errfunc, pinit, args=(freq_array, flux_array, flux_errors), full_output=1)
-    covar = fit[1]
-    if covar is not None:
-        P = fit[0]
-        residual = errfunc(P,freq_array, flux_array, flux_errors)
-        chi2red = sum(np.power(residual,2))/(len(freq_array)-len(pinit))
-        amp = P[0]
-        alpha = P[1]
-    # Errors
-        err_amp = np.sqrt(covar[0][0])
-        err_alpha = np.sqrt(covar[1][1])
+    try:
+        fit = leastsq(errfunc, pinit, args=(freq_array, flux_array, flux_errors), full_output=1)
+    except TypeError:
+        print "Could not perform fitting!"
+        fit = None
+    if fit is not None:
+        covar = fit[1]
+        if covar is not None:
+            P = fit[0]
+            residual = errfunc(P,freq_array, flux_array, flux_errors)
+            chi2red = sum(np.power(residual,2))/(len(freq_array)-len(pinit))
+            amp = P[0]
+            alpha = P[1]
+        # Errors
+            err_amp = np.sqrt(covar[0][0])
+            err_alpha = np.sqrt(covar[1][1])
+        else:
+            chi2red=None
+            alpha=None
+            amp=None
+            err_alpha=None
+            err_amp=None
     else:
         chi2red=None
         alpha=None
@@ -77,6 +88,7 @@ def fit_spectrum(freq_array,flux_array,flux_errors): #,plot):
         err_alpha=None
         err_amp=None
     return alpha, err_alpha, amp, err_amp, chi2red
+    
 
 # Allow me to display the figure in the centre of the screen, more pleasant than at a random location
 def newfigure(num=None,**args):
@@ -138,7 +150,7 @@ def poly_plots(snrs):
 
         fig.suptitle('Left-click = select source, middle-click = source subtract, right-click = select region to exclude from background calculation')
 
-        centerx, centery = w.wcs_world2pix(snr.loc.ra.value,snr.loc.dec.value,0)
+        centerx, centery = w.wcs_world2pix(snr.loc.fk5.ra.value,snr.loc.fk5.dec.value,0)
         print centerx, centery
 
         major, minor = snr.maj/(2*pix2deg) , snr.min/(2*pix2deg)
@@ -192,10 +204,10 @@ def update_text_file(snr, outtype):
     if outtype == "latex":
         outformat = "{0} & {1:02.0f}:{2:02.0f}:{3:02.0f} & {4:+02.0f}:{5:02.0f}:{6:02.0f} & ${7:3.1f}\\times{8:3.1f}$ & ${9:3.2f}\pm{10:3.2f}$ & ${11:3.2f}\pm{12:3.2f}$ \\\\ \n"
         outvars = [snr.name, \
-                snr.loc.ra.hms.h, snr.loc.ra.hms.m, snr.loc.ra.hms.s, \
-                snr.loc.dec.dms.d, abs(snr.loc.dec.dms.m), abs(snr.loc.dec.dms.s), \
+                snr.loc.fk5.ra.hms.h, snr.loc.fk5.ra.hms.m, snr.loc.fk5.ra.hms.s, \
+                snr.loc.fk5.dec.dms.d, abs(snr.loc.fk5.dec.dms.m), abs(snr.loc.fk5.dec.dms.s), \
                 60*snr.maj, 60*snr.min, \
-                snr.fit["flux"], snr.fit["fluxerr"], snr.fit["alpha"], snr.fit["alphaerr"]]
+                snr.fit_narrow["flux"], snr.fit_narrow["fluxerr"], snr.fit_narrow["alpha"], snr.fit_narrow["alphaerr"]]
         outputfile = "SNR_flux_densities.tex"
         if not os.path.exists(outputfile):
             with open(outputfile, 'w') as output_file:
@@ -203,7 +215,7 @@ def update_text_file(snr, outtype):
     elif outtype == "csv":
         outformat = "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9}\n"
         outvars = [snr.name, \
-                snr.loc.ra.value, snr.loc.dec.value, \
+                snr.loc.fk5.ra.value, snr.loc.fk5.dec.value, \
                 60*snr.maj, 60*snr.min, \
                 snr.fit["flux"], snr.fit["fluxerr"], snr.fit["alpha"], snr.fit["alphaerr"], snr.fit["chi2red"]]
         outputfile = "SNR_flux_densities.csv"
@@ -250,84 +262,78 @@ def do_fit(colors,snr):
 # Check whether any flux densities are negative and skip if it's one or two
     fluxes = np.array(fluxes)
     freqs = np.array(freqs)
-    negative = len(np.where(fluxes<0))
-    if negative <= 2:
-        freqs = freqs[np.where(fluxes>0)]
-        fluxes = fluxes[np.where(fluxes>0)]
-    else:
-        print "more than one negative flux density -- going to get an error for narrowband fit."
     logfreqs = np.log([f/normfreq for f in freqs])
     logfluxes = np.log(fluxes)
 
-#    fluxerrors = [0.1*s for s in fluxes]
     fluxerrors = [np.sqrt((0.02*s)**2+n*(r**2)) for s,r,n in zip(fluxes,rms,nbeams)]
     logfluxerrors = [ e / f for e,f in zip (fluxerrors, fluxes)]
-    alpha, err_alpha, amp, err_amp, chi2red = fit_spectrum(logfreqs,logfluxes,logfluxerrors)
-# Save to SNR object for later
-    snr.flux = dict(zip(freqs, fluxes))
-    snr.bkg = dict(zip(freqs, bkg))
-    snr.rms = dict(zip(freqs, rms))
-    snr.nbeams = dict(zip(freqs, nbeams))
+    alpha, err_alpha, amp, err_amp, chi2red = fit_spectrum(logfreqs[np.where(fluxes>0)],logfluxes[np.where(fluxes>0)],logfluxerrors[np.where(fluxes>0)])
 
-    return snr, alpha, err_alpha, amp, err_amp, chi2red
+    return snr, dict(zip(freqs, fluxes)), dict(zip(freqs, bkg)), dict(zip(freqs, rms)), dict(zip(freqs, nbeams)), alpha, err_alpha, amp, err_amp, chi2red
 
 def fit_fluxes(snrs):
     for snr in snrs:
-# Run this anyway, just so we can get all of the masked images
+# Fit over widebands
         colors = ["white", "red", "green", "blue"]
-        snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr)
-        if alpha:
+        snr, snr.flux_wide, snr.bkg_wide, snr.rms_wide, snr.nbeams_wide, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr)
+        if alpha is not None:
             flux150 = np.exp(amp)
             flux150err = err_amp * flux150
-            snr.fit = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
-    # Might as well save the plots
-        plot_spectrum(snr)
+            snr.fit_wide = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
+    # Save the plots
+            plot_spectrum(snr, wide=True)
 
-# Then immediately overwrite with the sub-band fits
+# Fit over narrow bands
         print "Fitting spectrum to flux densities from "+snr.name
         colors = ["072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
-        snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr)
+        snr, snr.flux_narrow, snr.bkg_narrow, snr.rms_narrow, snr.nbeams_narrow, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr)
         if alpha is not None:
             flux150 = np.exp(amp)
             flux150err = err_amp * flux150
-            snr.fit = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
+            snr.fit_narrow = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
             print "Reduced chi2 of fit: {0}".format(chi2red)
-        plot_spectrum(snr)
+            plot_spectrum(snr, wide=False)
 
-# If fitting across all the sub-bands failed, use just the wideband images
-#        if not alpha or chi2red > 1.93:
-# I think you only want to do this if the fitting totally failed, since you get the same result
-        if alpha is None:
-            colors = ["white", "red", "green", "blue"]
-            print "Sub-band fit failed: using wideband images."
-            snr, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr)
-            if alpha is not None:
-                flux150 = np.exp(amp)
-                flux150err = err_amp * flux150
-
-        if alpha is not None:
-            snr.fit = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
+        if snr.fit_narrow["alpha"] is None and snr.fit_wide["alpha"] is None:
+            print "Spectrum could not be fit for {0}.".format(snr.name)
+        else:
             for outtype in ["latex", "csv"]:
                 update_text_file(snr, outtype)
-        else:
-            print "Spectrum could not be fit for {0}.".format(snr.name)
-
     return snrs
 
-def plot_spectrum(snr):
-    # frequencies for plotting
-    freqs = snr.flux.keys()
-    fluxes = snr.flux.values()
-    bkg = snr.bkg.values()
-    rms = snr.rms.values()
-    nbeams = snr.nbeams.values()
-# Nice feature would be to have shading indicating the range of possible fits
-#    fluxerr = snr.fit["fluxerr"]
-#    alphaerr = snr.fit["alphaerr"]
-    if snr.fit is not None:
-        flux150 = snr.fit["flux"]
-        alpha = snr.fit["alpha"]
-    print alpha
+def plot_spectrum(snr,wide=False):
+    if wide is True:
+        # frequencies for plotting
+        freqs = snr.flux_wide.keys()
+        fluxes = snr.flux_wide.values()
+        bkg = snr.bkg_wide.values()
+        rms = snr.rms_wide.values()
+        nbeams = snr.nbeams_wide.values()
+    # Nice feature would be to have shading indicating the range of possible fits
+    #    fluxerr = snr.fit["fluxerr"]
+    #    alphaerr = snr.fit["alphaerr"]
+        if snr.fit_wide is not None:
+            flux150 = snr.fit_wide["flux"]
+            alpha = snr.fit_wide["alpha"]
+        else:
+            flux150 = None
+            alpha = None
+    else:
+        # frequencies for plotting
+        freqs = snr.flux_narrow.keys()
+        fluxes = snr.flux_narrow.values()
+        bkg = snr.bkg_narrow.values()
+        rms = snr.rms_narrow.values()
+        nbeams = snr.nbeams_narrow.values()
+    # Nice feature would be to have shading indicating the range of possible fits
+    #    fluxerr = snr.fit["fluxerr"]
+    #    alphaerr = snr.fit["alphaerr"]
+        if snr.fit_narrow is not None:
+            flux150 = snr.fit_narrow["flux"]
+            alpha = snr.fit_narrow["alpha"]
+        else:
+            flux150 = None
+            alpha = None
     #fluxerrors = [np.sqrt((0.02*s)**2+(r**2)) for s,r in zip(fluxes,rms)]
     fluxerrors = [np.sqrt((0.02*s)**2+n*(r**2)) for s,r,n in zip(fluxes,rms,nbeams)]
     plotfreqs = np.linspace(0.9*np.min(freqs),1.1*np.max(freqs),200)
@@ -346,9 +352,9 @@ def plot_spectrum(snr):
     ax2.set_xscale("log")
     ax2.set_yscale("log")
     for ax in ax1, ax2:
-        if snr.fit is not None:
+        if flux150 is not None:
             ax.plot(plotfreqs, powerlaw(plotfreqs, flux150/(normfreq**alpha), alpha),label="alpha=${0:3.2f}$ ".format(alpha))     # Scipy Fit
-            ax.legend()
+        ax.legend()
         ax.errorbar(freqs, bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
         ax.errorbar(freqs, fluxes, yerr=fluxerrors, fmt = "k.") # Data
         ax.set_ylabel("S / Jy")
@@ -389,7 +395,8 @@ def test_export_snr(snrs):
     tempsnrs = []
     for snr in snrs:
         file_ext = "pkl"
-        output_dir = "pkls/"
+# Temporary hack
+        output_dir = "old_pkls/"
         output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
         if os.path.exists(output_file):
             print "{0} has already been written.".format(snr.name)
@@ -414,23 +421,71 @@ def export_snrs(snrs):
         print "Writing FITS catalogue for {0}".format(snr.name)
         if os.path.exists(output_file):
             renumber(output_file)
-        if snr.fit is None:
-            sf = ""
-            sa = ""
-            sc = ""
+        if snr.fit_narrow is None:
+            if snr.fit_wide is None:
+                fittype = "none"
+                sf = ""
+                sa = ""
+                sc = ""
+            else:
+                fittype = "wide"
+                sf = snr.fit_wide["flux"]
+                sa = snr.fit_wide["alpha"]
+                sc = snr.fit_wide["chi2red"]
         else:
-            sf = snr.fit["flux"]
-            sa = snr.fit["alpha"]
-            sc = snr.fit["chi2red"]
-        print sa
-        t = Table([[snr.name], [snr.loc.ra.value], [snr.loc.dec.value], [snr.maj], [snr.min], [snr.known], [sf], [sa], [sc]], names=("Name", "RAJ2000", "DEJ2000", "major", "minor", "known", "flux_fitted", "alpha", "chi2red"))
-        print t
-        print output_file
-        if snr.flux is not None:
-            for key, value in snr.flux.iteritems():
+            fittype = "narrow"
+            sf = snr.fit_narrow["flux"]
+            sa = snr.fit_narrow["alpha"]
+            sc = snr.fit_narrow["chi2red"]
+        t = Table([[snr.name], [snr.loc.fk5.ra.value], [snr.loc.fk5.dec.value], [snr.maj], [snr.min], [snr.known], [sf], [sa], [sc], [fittype]], names=("Name", "RAJ2000", "DEJ2000", "major", "minor", "known", "flux_fitted", "alpha", "chi2red", "fittype"))
+        if snr.flux_narrow is not None:
+            for key, value in snr.flux_narrow.iteritems():
                 col = Column(name = "flux_{0}".format(key), data = [value])
                 t.add_column(col)
+        if snr.flux_wide is not None:
+            for key, value in snr.flux_wide.iteritems():
+                col = Column(name = "flux_{0}".format(key), data = [value])
+                t.add_column(col)
+        
         t.write(output_file, format=file_ext)
+
+def import_old_snr(snr):
+    print "Checking for existing measurements for {0}".format(snr.name)
+    file_ext = "pkl"
+#HACK
+    input_dir = "/home/tash/Dropbox/MWA/SNR_search/old_pkls"
+    input_file = "{0}/{1}.{2}".format(input_dir, snr.name, file_ext)
+#HACK to preserve RA and Dec
+    coords = snr.loc
+    if os.path.exists(input_file):
+        ifile = open(input_file, "rb")
+        snr = pickle.load(ifile)
+        snr.loc = coords
+    else:
+        print "No existing measurements for {0}".format(snr.name)
+
+    new_snr = SNR()
+    new_snr.name = snr.name
+    new_snr.loc = snr.loc
+    new_snr.maj = snr.maj
+    new_snr.min = snr.min
+    new_snr.known = snr.known
+    new_snr.polygon = snr.polygon
+    new_snr.sources = snr.sources
+    new_snr.exclude = snr.exclude
+    if len(snr.flux.keys()) > 4:
+        new_snr.flux_narrow = snr.flux
+        new_snr.bkg_narrow = snr.bkg
+        new_snr.rms_narrow = snr.rms
+        new_snr.nbeams_narrow = snr.nbeams
+        new_snr.fit_narrow = snr.fit
+    else:
+        new_snr.flux_wide = snr.flux
+        new_snr.bkg_wide = snr.bkg
+        new_snr.rms_wide = snr.rms
+        new_snr.nbeams_wide = snr.nbeams
+        new_snr.fit_wide = snr.fit
+    return new_snr
 
 def import_snr(snr):
     print "Checking for existing measurements for {0}".format(snr.name)
@@ -438,9 +493,16 @@ def import_snr(snr):
 #HACK
     input_dir = "/home/tash/Dropbox/MWA/SNR_search/pkls"
     input_file = "{0}/{1}.{2}".format(input_dir, snr.name, file_ext)
+#HACK to preserve RA and Dec
+    coords = snr.loc
     if os.path.exists(input_file):
         ifile = open(input_file, "rb")
         snr = pickle.load(ifile)
+        snr.loc = coords
+#    else:
+#        if abs(snr.loc.galactic.b)<0.001:
+# Check if it's a +/- 0.0 SNR
+#        input_file = "{0}/{1}{2}.{3}".format(input_dir, snr.loc.galactic.l, snr.loc.galactic.b, file_ext)
     else:
         print "No existing measurements for {0}".format(snr.name)
     return snr
@@ -585,7 +647,7 @@ if __name__ == "__main__":
 
     updated_snrs = []
     for snr in snrs:
-        snr = import_snr(snr)
+        snr = import_old_snr(snr)
         updated_snrs.append(snr)
     snrs = updated_snrs
 
@@ -601,8 +663,6 @@ if __name__ == "__main__":
         print "Measuring {0} SNRs".format(len(snrs))
         snrs = poly_plots(snrs)
 
-    for snr in snrs:
-        print snr.fit["alpha"]
     # Fit flux densities across the band using the measured polygons
     if options.fluxfit:
         fitsnrs = []
@@ -613,8 +673,6 @@ if __name__ == "__main__":
             else:
                 print "No measured polygons for {0}, cannot fit fluxes".format(snr.name)
         snrs = fit_fluxes(fitsnrs)
-    for snr in snrs:
-        print snr.fit["alpha"]
 
     if options.export:
         export_snrs(snrs)

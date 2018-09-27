@@ -50,11 +50,16 @@ class SNR(object):
         self.polygon = None
         self.sources = None
         self.exclude = None
-        self.flux = None # A dictionary of frequencies to flux densities
-        self.bkg = None # A dictionary of frequencies to background flux densities
-        self.rms = None # A dictionary of frequencies to local RMS measurements
-        self.nbeams = None # A dictionary of frequencies to number of PSFs fit over
-        self.fit = None # A dictionary of "flux" -> total flux at 150 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
+        self.flux_narrow = None # A dictionary of frequencies to flux densities
+        self.bkg_narrow = None # A dictionary of frequencies to background flux densities
+        self.rms_narrow = None # A dictionary of frequencies to local RMS measurements
+        self.nbeams_narrow = None # A dictionary of frequencies to number of PSFs fit over
+        self.fit_narrow = None # A dictionary of "flux" -> total flux at 150 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
+        self.flux_wide = None # A dictionary of frequencies to flux densities
+        self.bkg_wide = None # A dictionary of frequencies to background flux densities
+        self.rms_wide = None # A dictionary of frequencies to local RMS measurements
+        self.nbeams_wide = None # A dictionary of frequencies to number of PSFs fit over
+        self.fit_wide = None # A dictionary of "flux" -> total flux at 150 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
 
 def gaussian2d(x, y, mux, muy, sigmax, sigmay, theta):
    a = np.cos(theta)**2 / (2*sigmax**2) + np.sin(theta)**2 / (2*sigmay**2)
@@ -110,7 +115,10 @@ def read_snrs():
         #   b = row[1]
         #   RA = 15*(row[2]+(row[3]/60.)+(row[4]/3600.))
         #   Dec = row[5]+(row[6]/60.)
-           snr.loc = SkyCoord("{0:02.0f}h{1:02.0f}m{2:02.0f}s {3:+02.0f}d{4:02.0f}m00s".format(row[2],row[3],row[4],row[5],row[6]))
+           try:
+               snr.loc = SkyCoord("{0:02.0f}h{1:02.0f}m{2:02.0f}s {3:+02.0f}d{4:02.0f}m00s".format(row[2],row[3],row[4],row[5],row[6]))
+           except:
+               snr.loc = SkyCoord("{0:5.3f}d {1:5.3f}".format(row[0],row[1]),frame="galactic",unit=(u.deg,u.deg))
            snr.maj = row[7]/60.
            snr.min = row[8]/60.
            snr.name  = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
@@ -126,7 +134,7 @@ def read_snrs():
 
         for row in tempcat:
            snr = SNR()
-           snr.loc = SkyCoord(ra = row[0]*u.degree, dec = row[1]*u.degree, frame='icrs')
+           snr.loc = SkyCoord(ra = row[0]*u.degree, dec = row[1]*u.degree, frame='fk5')
            snr.maj = row[2]
            snr.min = row[2]
            snr.name  = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
