@@ -14,6 +14,9 @@ from astropy.io import fits
 from astropy import wcs
 from astropy.table import Table, Column
 
+from astropy.visualization import PercentileInterval
+#from astropy.visualization import AsinhStretch
+
 # Need a least-squares estimator that gives a useable error estimate
 from scipy.optimize import leastsq
 
@@ -38,7 +41,7 @@ from defs import find_fluxes
 from defs import normalize
 
 # Normalisation frequency for all functions
-normfreq = 150000000. # 150 MHz
+normfreq = 200.e6 # 200 MHz
 
 # Line markers and colors
 firstsnr = { "marker" : "x" , "linestyle" : "None", "color" : "white" }
@@ -111,16 +114,36 @@ def poly_plots(snrs):
         red_data = red[0].data
         green_data = green[0].data
         blue_data = blue[0].data
-        rgb = np.dstack([red_data,green_data,blue_data])
+
+#        rgb = np.dstack([red_data,green_data,blue_data])
+
         xmax = white[0].header["NAXIS1"]
         ymax = white[0].header["NAXIS2"]
+
         w = wcs.WCS(white[0].header)
         try:
             pix2deg = white[0].header["CD2_2"]
         except KeyError:
             pix2deg = white[0].header["CDELT2"]
-        rgb = normalize(rgb, np.nanmin(rgb), np.nanmax(rgb))
         # Divide by maximum value to normalise
+#        rgb = normalize(rgb, np.nanmin(rgb), np.nanmax(rgb))
+
+    # Percentile interval for image normalisation
+        pct = 97.0
+        interval = PercentileInterval(pct)
+#        vmin, vmax = interval.get_limits(data)
+#        stretch = AsinhStretch(a=0.1)
+
+        i = interval.get_limits(red_data)
+        r = normalize(red_data, *i)
+        i = interval.get_limits(green_data)
+        g = normalize(green_data, *i)
+        i = interval.get_limits(blue_data)
+        b = normalize(blue_data, *i)
+
+        rgb = np.dstack([r,g,b])
+        rgb[np.isnan(rgb)]=0.0
+
 
         def update(val):
             vmin = svmin.val
@@ -139,11 +162,12 @@ def poly_plots(snrs):
         axmin = fig.add_axes([0.05, 0.05, 0.1, 0.02], axisbg=axcolor)
         axmax  = fig.add_axes([0.24, 0.05, 0.1, 0.02], axisbg=axcolor)
 
-        vmin0 = np.min(white_data)
-        vmax0 = np.max(white_data)
+#        vmin0 = np.min(white_data)
+#        vmax0 = np.max(white_data)
+        vmin0, vmax0 = interval.get_limits(white_data)
         # include the slider: cribbed from https://stackoverflow.com/questions/5611805/using-matplotlib-slider-widget-to-change-clim-in-image
-        svmin = Slider(axmin, "vmin", -5.0, 1.0, valinit=vmin0)
-        svmax = Slider(axmax, "vmax", -1.0, 10.0, valinit=vmax0)
+        svmin = Slider(axmin, "vmin", 2*vmin0, -2*vmin0, valinit=vmin0)
+        svmax = Slider(axmax, "vmax", -2*vmax0, 2*vmax0, valinit=vmax0)
 
         svmin.on_changed(update)
         svmax.on_changed(update)
@@ -217,7 +241,7 @@ def update_text_file(snr, outtype):
         outvars = [snr.name, \
                 snr.loc.fk5.ra.value, snr.loc.fk5.dec.value, \
                 60*snr.maj, 60*snr.min, \
-                snr.fit["flux"], snr.fit["fluxerr"], snr.fit["alpha"], snr.fit["alphaerr"], snr.fit["chi2red"]]
+                snr.fit_narrow["flux"], snr.fit_narrow["fluxerr"], snr.fit_narrow["alpha"], snr.fit_narrow["alphaerr"], snr.fit_narrow["chi2red"]]
         outputfile = "SNR_flux_densities.csv"
         if not os.path.exists(outputfile):
             with open(outputfile, 'w') as output_file:
@@ -259,14 +283,12 @@ def do_fit(colors,snr):
             nbeams.append(nbeam)
         else:
             print "Unable to fit flux for {0} in {1}".format(snr.name, color)
-# Check whether any flux densities are negative and skip if it's one or two
     fluxes = np.array(fluxes)
     freqs = np.array(freqs)
     logfreqs = np.log([f/normfreq for f in freqs])
     logfluxes = np.log(fluxes)
-
     fluxerrors = [np.sqrt((0.02*s)**2+n*(r**2)) for s,r,n in zip(fluxes,rms,nbeams)]
-    logfluxerrors = [ e / f for e,f in zip (fluxerrors, fluxes)]
+    logfluxerrors = np.array([ e / f for e,f in zip (fluxerrors, fluxes)])
     alpha, err_alpha, amp, err_amp, chi2red = fit_spectrum(logfreqs[np.where(fluxes>0)],logfluxes[np.where(fluxes>0)],logfluxerrors[np.where(fluxes>0)])
 
     return snr, dict(zip(freqs, fluxes)), dict(zip(freqs, bkg)), dict(zip(freqs, rms)), dict(zip(freqs, nbeams)), alpha, err_alpha, amp, err_amp, chi2red
@@ -277,9 +299,9 @@ def fit_fluxes(snrs):
         colors = ["white", "red", "green", "blue"]
         snr, snr.flux_wide, snr.bkg_wide, snr.rms_wide, snr.nbeams_wide, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr)
         if alpha is not None:
-            flux150 = np.exp(amp)
-            flux150err = err_amp * flux150
-            snr.fit_wide = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
+            flux200 = np.exp(amp)
+            flux200err = err_amp * flux200
+            snr.fit_wide = {"flux" : flux200, "fluxerr" : flux200err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
     # Save the plots
             plot_spectrum(snr, wide=True)
 
@@ -288,9 +310,9 @@ def fit_fluxes(snrs):
         colors = ["072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
         snr, snr.flux_narrow, snr.bkg_narrow, snr.rms_narrow, snr.nbeams_narrow, alpha, err_alpha, amp, err_amp, chi2red = do_fit(colors,snr)
         if alpha is not None:
-            flux150 = np.exp(amp)
-            flux150err = err_amp * flux150
-            snr.fit_narrow = {"flux" : flux150, "fluxerr" : flux150err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
+            flux200 = np.exp(amp)
+            flux200err = err_amp * flux200
+            snr.fit_narrow = {"flux" : flux200, "fluxerr" : flux200err, "alpha" : alpha, "alphaerr" : err_alpha, "chi2red" : chi2red}
             print "Reduced chi2 of fit: {0}".format(chi2red)
             plot_spectrum(snr, wide=False)
 
@@ -313,11 +335,15 @@ def plot_spectrum(snr,wide=False):
     #    fluxerr = snr.fit["fluxerr"]
     #    alphaerr = snr.fit["alphaerr"]
         if snr.fit_wide is not None:
-            flux150 = snr.fit_wide["flux"]
+            flux200 = snr.fit_wide["flux"]
+            err_flux200 = snr.fit_wide["fluxerr"]
             alpha = snr.fit_wide["alpha"]
+            err_alpha = snr.fit_wide["alphaerr"]
         else:
-            flux150 = None
+            flux200 = None
+            err_flux200 = None
             alpha = None
+            err_alpha = None
     else:
         # frequencies for plotting
         freqs = snr.flux_narrow.keys()
@@ -329,11 +355,15 @@ def plot_spectrum(snr,wide=False):
     #    fluxerr = snr.fit["fluxerr"]
     #    alphaerr = snr.fit["alphaerr"]
         if snr.fit_narrow is not None:
-            flux150 = snr.fit_narrow["flux"]
+            flux200 = snr.fit_narrow["flux"]
+            err_flux200 = snr.fit_narrow["fluxerr"]
             alpha = snr.fit_narrow["alpha"]
+            err_alpha = snr.fit_narrow["alphaerr"]
         else:
-            flux150 = None
+            flux200 = None
+            err_flux200 = None
             alpha = None
+            err_alpha = None
     #fluxerrors = [np.sqrt((0.02*s)**2+(r**2)) for s,r in zip(fluxes,rms)]
     fluxerrors = [np.sqrt((0.02*s)**2+n*(r**2)) for s,r,n in zip(fluxes,rms,nbeams)]
     plotfreqs = np.linspace(0.9*np.min(freqs),1.1*np.max(freqs),200)
@@ -352,8 +382,8 @@ def plot_spectrum(snr,wide=False):
     ax2.set_xscale("log")
     ax2.set_yscale("log")
     for ax in ax1, ax2:
-        if flux150 is not None:
-            ax.plot(plotfreqs, powerlaw(plotfreqs, flux150/(normfreq**alpha), alpha),label="alpha=${0:3.2f}$ ".format(alpha))     # Scipy Fit
+        if flux200 is not None:
+            ax.plot(plotfreqs, powerlaw(plotfreqs, flux200/(normfreq**alpha), alpha),label="$\\alpha={0:3.2f}\pm{1:3.2f}$ ".format(alpha, err_alpha))     # Scipy Fit
         ax.legend()
         ax.errorbar(freqs, bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
         ax.errorbar(freqs, fluxes, yerr=fluxerrors, fmt = "k.") # Data
@@ -395,7 +425,7 @@ def test_export_snr(snrs):
     tempsnrs = []
     for snr in snrs:
         file_ext = "pkl"
-# Temporary hack
+# Temporary HACK
         output_dir = "old_pkls/"
         output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
         if os.path.exists(output_file):
@@ -425,19 +455,25 @@ def export_snrs(snrs):
             if snr.fit_wide is None:
                 fittype = "none"
                 sf = ""
+                err_sf = ""
                 sa = ""
+                err_sa = ""
                 sc = ""
             else:
                 fittype = "wide"
                 sf = snr.fit_wide["flux"]
+                err_sf = snr.fit_wide["fluxerr"]
                 sa = snr.fit_wide["alpha"]
+                err_sa = snr.fit_wide["alphaerr"]
                 sc = snr.fit_wide["chi2red"]
         else:
             fittype = "narrow"
             sf = snr.fit_narrow["flux"]
+            err_sf = snr.fit_narrow["fluxerr"]
             sa = snr.fit_narrow["alpha"]
+            err_sa = snr.fit_narrow["alphaerr"]
             sc = snr.fit_narrow["chi2red"]
-        t = Table([[snr.name], [snr.loc.fk5.ra.value], [snr.loc.fk5.dec.value], [snr.maj], [snr.min], [snr.known], [sf], [sa], [sc], [fittype]], names=("Name", "RAJ2000", "DEJ2000", "major", "minor", "known", "flux_fitted", "alpha", "chi2red", "fittype"))
+        t = Table([[snr.name], [snr.loc.fk5.ra.value], [snr.loc.fk5.dec.value], [snr.maj], [snr.min], [snr.pa], [snr.known], [sf], [err_sf], [sa], [err_sa], [sc], [fittype]], names=("Name", "RAJ2000", "DEJ2000", "major", "minor", "pa", "known", "flux_fitted", "err_flux_fitted", "alpha", "err_alpha", "chi2red", "fittype"))
         if snr.flux_narrow is not None:
             for key, value in snr.flux_narrow.iteritems():
                 col = Column(name = "flux_{0}".format(key), data = [value])
@@ -479,6 +515,12 @@ def import_old_snr(snr):
         new_snr.rms_narrow = snr.rms
         new_snr.nbeams_narrow = snr.nbeams
         new_snr.fit_narrow = snr.fit
+# NB: hopefully I won't need this because I will regenerate everything right away
+#        new_snr.fit_narrow["flux"] = snr.fit["flux"] * (200./150.)**snr.fit["alpha"]
+#        new_snr.fit_narrow["fluxerr"] = snr.fit["fluxerr"] * (new_snr.fit_narrow["flux"]/snr.fit["flux"])
+#        new_snr.fit_narrow["alpha"] = snr.fit["alpha"]
+#        new_snr.fit_narrow["err_alpha"] = snr.fit["err_alpha"]
+#        new_snr.fit_narrow["chi2red"] = snr.fit["chi2red"]
     else:
         new_snr.flux_wide = snr.flux
         new_snr.bkg_wide = snr.bkg
@@ -490,15 +532,21 @@ def import_old_snr(snr):
 def import_snr(snr):
     print "Checking for existing measurements for {0}".format(snr.name)
     file_ext = "pkl"
-#HACK
+#HACK to direct path -- would be nice to tidy this
     input_dir = "/home/tash/Dropbox/MWA/SNR_search/pkls"
     input_file = "{0}/{1}.{2}".format(input_dir, snr.name, file_ext)
-#HACK to preserve RA and Dec
+# Preserve RA, Dec, a, b, pa from candidates.txt
     coords = snr.loc
+    snrmaj = snr.maj
+    snrmin = snr.min
+    snrpa = snr.pa
     if os.path.exists(input_file):
         ifile = open(input_file, "rb")
         snr = pickle.load(ifile)
         snr.loc = coords
+        snr.maj = snrmaj
+        snr.min = snrmin
+        snrpa = snr.pa
 #    else:
 #        if abs(snr.loc.galactic.b)<0.001:
 # Check if it's a +/- 0.0 SNR
@@ -574,9 +622,11 @@ def make_plots(snrs):
             lon = ax.coords['ra']
             lat = ax.coords['dec']
             if lob:
-                lon.set_axislabel("RAJ2000")
+                lon.set_axislabel("Right Ascension (J2000)")
+                lon.set_major_formatter('hh:mm')
             if lal:
-                lat.set_axislabel("DEJ2000")
+                lat.set_axislabel("Declination (J2000)")
+                lat.set_major_formatter('dd:mm')
             lon.set_ticklabel_visible(lob)
             lat.set_ticklabel_visible(lal)
             lon.set_ticks_visible(lob)
@@ -584,7 +634,11 @@ def make_plots(snrs):
             overlay = ax.get_coords_overlay("fk5")
             overlay.grid(axes = ax, color='white', ls='dotted')
             overlay["ra"].set_ticklabel_visible(lot)
+            if lot:
+                overlay["ra"].set_major_formatter('hh:mm')
             overlay["dec"].set_ticklabel_visible(lar)
+            if lar:
+                overlay["dec"].set_major_formatter('hh:mm')
 
         output_file = "plots/"+snr.name+".png"
         if os.path.exists(output_file):
@@ -647,7 +701,9 @@ if __name__ == "__main__":
 
     updated_snrs = []
     for snr in snrs:
-        snr = import_old_snr(snr)
+# HACK to import old style snr with 150-MHz centers and narrow OR wide flux density measurements
+#        snr = import_old_snr(snr)
+        snr = import_snr(snr)
         updated_snrs.append(snr)
     snrs = updated_snrs
 

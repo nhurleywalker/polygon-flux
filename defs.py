@@ -46,6 +46,7 @@ class SNR(object):
         self.loc = None
         self.maj = None
         self.min = None
+        self.pa = None
         self.known = None
         self.polygon = None
         self.sources = None
@@ -54,12 +55,12 @@ class SNR(object):
         self.bkg_narrow = None # A dictionary of frequencies to background flux densities
         self.rms_narrow = None # A dictionary of frequencies to local RMS measurements
         self.nbeams_narrow = None # A dictionary of frequencies to number of PSFs fit over
-        self.fit_narrow = None # A dictionary of "flux" -> total flux at 150 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
+        self.fit_narrow = None # A dictionary of "flux" -> total flux at 200 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
         self.flux_wide = None # A dictionary of frequencies to flux densities
         self.bkg_wide = None # A dictionary of frequencies to background flux densities
         self.rms_wide = None # A dictionary of frequencies to local RMS measurements
         self.nbeams_wide = None # A dictionary of frequencies to number of PSFs fit over
-        self.fit_wide = None # A dictionary of "flux" -> total flux at 150 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
+        self.fit_wide = None # A dictionary of "flux" -> total flux at 200 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
 
 def gaussian2d(x, y, mux, muy, sigmax, sigmay, theta):
    a = np.cos(theta)**2 / (2*sigmax**2) + np.sin(theta)**2 / (2*sigmay**2)
@@ -136,7 +137,8 @@ def read_snrs():
            snr = SNR()
            snr.loc = SkyCoord(ra = row[0]*u.degree, dec = row[1]*u.degree, frame='fk5')
            snr.maj = row[2]
-           snr.min = row[2]
+           snr.min = row[3]
+           snr.pa = row[4]
            snr.name  = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
            snr.known = False
            snrs.append(snr)
