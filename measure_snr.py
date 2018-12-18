@@ -546,7 +546,7 @@ def import_snr(snr):
         snr.loc = coords
         snr.maj = snrmaj
         snr.min = snrmin
-        snrpa = snr.pa
+        snr.pa = snrpa
 #    else:
 #        if abs(snr.loc.galactic.b)<0.001:
 # Check if it's a +/- 0.0 SNR
