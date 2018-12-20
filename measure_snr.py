@@ -535,11 +535,12 @@ def import_snr(snr):
 #HACK to direct path -- would be nice to tidy this
     input_dir = "/home/tash/Dropbox/MWA/SNR_search/pkls"
     input_file = "{0}/{1}.{2}".format(input_dir, snr.name, file_ext)
-# Preserve RA, Dec, a, b, pa from candidates.txt
+# Preserve Name, RA, Dec, a, b, pa from candidates.txt
     coords = snr.loc
     snrmaj = snr.maj
     snrmin = snr.min
     snrpa = snr.pa
+    snrname = snr.name
     if os.path.exists(input_file):
         ifile = open(input_file, "rb")
         snr = pickle.load(ifile)
@@ -547,6 +548,7 @@ def import_snr(snr):
         snr.maj = snrmaj
         snr.min = snrmin
         snr.pa = snrpa
+        snr.name = snrname
 #    else:
 #        if abs(snr.loc.galactic.b)<0.001:
 # Check if it's a +/- 0.0 SNR
