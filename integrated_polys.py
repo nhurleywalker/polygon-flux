@@ -79,10 +79,16 @@ def measure_E11(snr):
     bmaj = hdu[0].header["BMAJ"]
     bmin = hdu[0].header["BMIN"]
     make_single_plot(snr.polygon, snr.sources, snr.exclude, fitsfile)
-    print "final flux, total flux, background flux, rms flux, number of beams"
-    print final_flux, total_flux, bkg_flux, rms_flux, nbeam
+    print "final temperature, total temperature, background temperature, rms temperature (all in K), number of beams"
+    print mK2K(final_flux), mK2K(total_flux), mK2K(bkg_flux), mK2K(rms_flux), nbeam
+# In units of Jy
     S_11 = T2PFD(T, nu, bmaj, bmin)
-    return S_11
+    tot_11 = T2PFD(mK2K(total_flux), nu, bmaj, bmin)
+    bkg_11 = T2PFD(mK2K(bkg_flux), nu, bmaj, bmin)
+    rms_11 = T2PFD(mK2K(rms_flux), nu, bmaj, bmin)
+    print "final flux, total flux, background flux, rms flux, number of beams"
+    print S_11, tot_11, bkg_11, rms_11, nbeam
+    return S_11, tot_11, bkg_11, rms_11, nbeam
 
 if __name__ == "__main__":
     snrs = read_snrs()
