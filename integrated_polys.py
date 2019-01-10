@@ -90,6 +90,16 @@ def measure_E11(snr):
     print S_11, tot_11, bkg_11, rms_11, nbeam
     return S_11, tot_11, bkg_11, rms_11, nbeam
 
+def measure_MGPS(snr):
+    sourcedir = "/media/data/Dropbox/MWA/SNR_search/confirm_candidates/regrid_all/MGPS/"
+    fitsfile = sourcedir+snr.name+"_MGPS.fits"
+    final_flux, total_flux, bkg_flux, rms_flux, nbeam = find_fluxes(snr.polygon, snr.sources, snr.exclude, fitsfile)
+    make_single_plot(snr.polygon, snr.sources, snr.exclude, fitsfile)
+    print "final flux, total flux, background flux, rms flux, number of beams"
+    print final_flux, total_flux, bkg_flux, rms_flux, nbeam
+# In units of Jy
+    return final_flux, total_flux, bkg_flux, rms_flux, nbeam
+
 if __name__ == "__main__":
     snrs = read_snrs()
     updated_snrs = []
