@@ -23,10 +23,10 @@ from defs import read_snrs
 # Then montage the red, green, and blue fits files to match the white
 
 def reproject_snrs(snrs, clobber):
-    padding = 1.4
+    padding = 4.0
 #    colors = ["072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
     colors = ["white", "red", "green", "blue", "072-080MHz", "080-088MHz", "088-095MHz", "095-103MHz", "103-111MHz", "111-118MHz", "118-126MHz", "126-134MHz", "139-147MHz", "147-154MHz", "154-162MHz", "162-170MHz", "170-177MHz", "177-185MHz", "185-193MHz", "193-200MHz", "200-208MHz", "208-216MHz", "216-223MHz", "223-231MHz"]
-    fitsdir = "/home/tash/data/MWA/GLEAM/GP/Week4/rgb/new_polys/"
+    fitsdir = "/home/tash/data/MWA/GLEAM/GP/"
 
     for color in colors:
         print "Reprojecting "+color+" image"
@@ -53,17 +53,17 @@ def reproject_snrs(snrs, clobber):
             l = snr.loc.galactic.l.value
             if (((l>180) and (l<240)) or (l>300) or (l<60)):
                 name = snr.name+".fits"
-                if clobber or not os.path.exists(color+"/"+name):
+                if clobber or not os.path.exists(color+"/"+name) or not os.path.exists(color+"/rpj/"+name):
         # Week4 for GC SNR; Week2 for anticentre SNR
                     if ((l>180) and (l<240)):
-                        psf = fits.open(fitsdir+"Week2_"+color+"_lownoise_comp_psf.fits")
-                        hdu = fits.open(fitsdir+"Week2_"+color+"_lownoise_ddmod_rescaled.fits")
+                        psf = fits.open(fitsdir+"Week2/Week2_"+color+"_lownoise_comp_psf.fits")
+                        hdu = fits.open(fitsdir+"Week2/Week2_"+color+"_lownoise_ddmod_rescaled.fits")
 # HACK
 #                        orig_hdu = fits.open(fitsdir+"Week2_"+color+"_lownoise_ddmod_rescaled.fits")
 #                        hdu = fits.open("/home/tash/data/MWA/GLEAM/allmosaics/SNR_G189.6+3.3/"+color+"/"+snr.name+".fits")
                     else:
-                        psf = fits.open(fitsdir+"Week4_"+color+"_lownoise_comp_psf.fits")
-                        hdu = fits.open(fitsdir+"Week4_"+color+"_lownoise_ddmod_rescaled.fits")
+                        psf = fits.open(fitsdir+"Week4/Week4_"+color+"_lownoise_comp_psf.fits")
+                        hdu = fits.open(fitsdir+"Week4/Week4_"+color+"_lownoise_ddmod_rescaled.fits")
                     try:
                         pix2deg = hdu[0].header["CDELT2"]
                     except KeyError:
@@ -74,11 +74,16 @@ def reproject_snrs(snrs, clobber):
                         framesize = u.Quantity(2*padding*snr.maj, u.deg)
                     else:
                         framesize = u.Quantity(1, u.deg)
-                    cutout = Cutout2D(hdu[0].data, snr.loc, framesize, wcs=w)
+   # Set a maximum cutout size to avoid getting weird results for some snr
+                    if framesize.value > 4.0:
+                        framesize = u.Quantity(4, u.deg)
+                       
+                    print framesize
+                    cutout = Cutout2D(hdu[0].data, snr.loc.fk5, framesize, wcs=w)
                 # Read these from the correct PSF image and then put them in the cutout
                     wpsf = wcs.WCS(psf[0].header) 
-                    cp = np.squeeze(wpsf.wcs_world2pix([[snr.loc.ra.value,snr.loc.dec.value,1]],0))
-                    xp, yp = cp[0], cp[1]
+                    cp = np.squeeze(wpsf.wcs_world2pix([[snr.loc.fk5.ra.value,snr.loc.fk5.dec.value,1]],0))
+                    xp, yp = int(cp[0]), int(cp[1])
                     bmaj = psf[0].data[0,yp,xp]
                     bmin = psf[0].data[1,yp,xp]
                     bpa = psf[0].data[2,yp,xp]
@@ -102,6 +107,7 @@ def reproject_snrs(snrs, clobber):
                     except:
                         print "Invalid fits keys for {0} at {1}".format(snr.name,color)
                     
+                    print snr.name, "here"
                 # Reproject the other colours
                     if color != "white":
                         montage.mGetHdr("white/"+name,"temp.txt")
