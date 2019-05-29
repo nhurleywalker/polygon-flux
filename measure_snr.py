@@ -13,6 +13,8 @@ import pickle
 from astropy.io import fits
 from astropy import wcs
 from astropy.table import Table, Column
+from astropy import units as u
+from astropy.nddata import Cutout2D
 
 from astropy.visualization import PercentileInterval
 #from astropy.visualization import AsinhStretch
@@ -24,6 +26,7 @@ import matplotlib
 #matplotlib.use('Agg') # So does not use display -- only good if just making plots
 from matplotlib.widgets import Slider, RadioButtons
 from matplotlib import pyplot as plt
+import matplotlib.ticker as mticker
 
 from matplotlib import rc
 rc('text', usetex=True)
@@ -324,6 +327,9 @@ def fit_fluxes(snrs):
     return snrs
 
 def plot_spectrum(snr,wide=False):
+    # avoid the use of exponents in the labels
+    formatter = mticker.FuncFormatter(lambda y, _: '{:.16g}'.format(y))
+
     if wide is True:
         # frequencies for plotting
         freqs = snr.flux_wide.keys()
@@ -370,9 +376,11 @@ def plot_spectrum(snr,wide=False):
 
     print "Spectrum fit, making plot for "+snr.name
     if len(freqs) > 4:
-        outpng = ("./spectra/"+snr.name+".png")
+        outpng = ("./spectra/"+snr.name+".eps")
+#        outpng = ("./spectra/"+snr.name+".png")
     else:
-        outpng = ("./spectra/"+snr.name+"_wide.png")
+        outpng = ("./spectra/"+snr.name+"_wide.eps")
+#        outpng = ("./spectra/"+snr.name+"_wide.png")
     # Plot
     fig = plt.figure(figsize=(10,5))
     # LaTeX-safe
@@ -383,13 +391,14 @@ def plot_spectrum(snr,wide=False):
     ax2.set_yscale("log")
     for ax in ax1, ax2:
         if flux200 is not None:
-            ax.plot(plotfreqs, powerlaw(plotfreqs, flux200/(normfreq**alpha), alpha),label="$\\alpha={0:3.2f}\pm{1:3.2f}$ ".format(alpha, err_alpha))     # Scipy Fit
+            ax.plot(1.e-6 * np.array(plotfreqs), powerlaw(plotfreqs, flux200/(normfreq**alpha), alpha),label="$\\alpha={0:3.2f}\pm{1:3.2f}$ ".format(alpha, err_alpha))     # Scipy Fit
         ax.legend()
-        ax.errorbar(freqs, bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
-        ax.errorbar(freqs, fluxes, yerr=fluxerrors, fmt = "k.") # Data
+        ax.errorbar(1.e-6 * np.array(freqs), bkg, yerr=rms, fmt = "r.", alpha = 0.5)  # Background
+        ax.errorbar(1.e-6 * np.array(freqs), fluxes, yerr=fluxerrors, fmt = "k.") # Data
         ax.set_ylabel("S / Jy")
         ax.set_xlabel("Frequency / MHz")
-    ax2.set_xlim(0.8*np.min(freqs), 1.2*np.max(freqs))
+        ax.xaxis.set_major_formatter(formatter)
+    ax2.set_xlim(0.8*np.min(1.e-6*np.array(freqs)), 1.2*np.max(1.e-6*np.array(freqs)))
     ax2.set_ylim(0.3*np.min([np.min(fluxes),np.min(bkg)]),3*np.max([np.max(fluxes),np.max(bkg)]))
     if os.path.exists(outpng):
         renumber(outpng)
@@ -417,8 +426,10 @@ def filter_latitude(snrs):
     filtered = []
     for snr in snrs:
         l = snr.loc.galactic.l.value
-        if (((l>180) and (l<240)) or (l>340) or (l<60)):
-            filtered.append(snr)
+#        if (((l>180) and (l<240)) or (l>340) or (l<60)):
+#            filtered.append(snr)
+#        if (((l>180) and (l<240)) or (l>340) or (l<60)):
+        filtered.append(snr)
     return filtered
        
 def test_export_snr(snrs):
@@ -560,28 +571,67 @@ def import_snr(snr):
 def make_plots(snrs):
     for snr in snrs:
         print "Making attractive FITS image plot for "+snr.name
+
+        # Normalize and stretch images
+        pct = 95.0
+        interval = PercentileInterval(pct)
+
+#        framesize = 3*snr.maj*u.deg
+        framesize = max(1.0, 3*snr.maj)*u.deg
+
 # Load image data
         mask = fits.open("white/"+snr.name+"_mask.fits")
         white = fits.open("white/"+snr.name+".fits")
         red = fits.open("red/rpj/"+snr.name+".fits")
         green = fits.open("green/rpj/"+snr.name+".fits")
         blue = fits.open("blue/rpj/"+snr.name+".fits")
-        mask_data = mask[0].data
+#        mask_data = mask[0].data
 # Set mask data to 1.0, NaNs will not be plotted
-        mask_data[np.where(np.logical_not(np.isnan(mask_data)))] = 1.0
-        white_data = white[0].data
-        red_data = red[0].data
-        green_data = green[0].data
-        blue_data = blue[0].data
-        rgb = np.dstack([red_data,green_data,blue_data])
-        rgb = normalize(rgb, np.nanmin(rgb), np.nanmax(rgb))
+#        mask_data[np.where(np.logical_not(np.isnan(mask_data)))] = 1.0
+#        white_data = white[0].data
+#        red_data = red[0].data
+#        green_data = green[0].data
+#        blue_data = blue[0].data
+
+    # All GLEAM images and the ancillary image should be the same for all images thanks to regridding stage
+        w_gleam = wcs.WCS(red[0].header)
+
+        cutout_white = Cutout2D(white[0].data, snr.loc, framesize, wcs=w_gleam)
+        cutout_mask = Cutout2D(mask[0].data, snr.loc, framesize, wcs=w_gleam)
+        cutout_mask.data[np.where(np.logical_not(np.isnan(cutout_mask.data)))] = 1.0
+
+        vmin, vmax = interval.get_limits(cutout_white.data)
+
+        cutout_red = Cutout2D(red[0].data, snr.loc, framesize, wcs=w_gleam)
+        cutout_green = Cutout2D(green[0].data, snr.loc, framesize, wcs=w_gleam)
+        cutout_blue = Cutout2D(blue[0].data, snr.loc, framesize, wcs=w_gleam)
+
+        ir = interval.get_limits(cutout_red.data)
+        r = normalize(cutout_red.data, *ir)
+        ig = interval.get_limits(cutout_green.data)
+        g = normalize(cutout_green.data, *ig)
+        ib = interval.get_limits(cutout_blue.data)
+        b = normalize(cutout_blue.data, *ib)
+
+        rgb = np.dstack([r,g,b])
+
+        print("The colour scales for the GLEAM RGB cube are {0:2.1f}--{1:2.1f}, {2:2.1f}--{3:2.1f}, and {4:2.1f}--{5:2.1f}\,Jy\perbeam for R, G, and B, respectively.".format(ir[0], ir[1], ig[0], ig[1], ib[0], ib[1]))
+
+# temporary: changing variable names
+        white_data = cutout_white.data
+        mask_data = cutout_mask.data
+        w = cutout_white.wcs
+
+#        rgb = np.dstack([red_data,green_data,blue_data])
+#        rgb = normalize(rgb, np.nanmin(rgb), np.nanmax(rgb))
 ## Get relevant header info
 ## Later: add bmaj bmin as ellipse
-        xmax = white[0].header["NAXIS1"]
-        ymax = white[0].header["NAXIS2"]
+#        xmax = white[0].header["NAXIS1"]
+#        ymax = white[0].header["NAXIS2"]
+        xmax, ymax = white_data.shape
 ## Transform snr polygons into local pixel co-ordinates
 ## All colours should be on the same projection thanks to Montage so we only have to do this once
-        w = wcs.WCS(white[0].header)
+#        w = wcs.WCS(white[0].header)
         local_polygon = Coords()
         if len(snr.polygon.x):
             local_polygon.x, local_polygon.y = w.wcs_world2pix(zip(snr.polygon.x,snr.polygon.y),0).transpose()
@@ -599,8 +649,8 @@ def make_plots(snrs):
         ax_white_mask = fig.add_subplot(222, projection=w)
         ax_rgb = fig.add_subplot(223, projection=w)
         ax_rgb_mask = fig.add_subplot(224, projection=w)
-        img_white = ax_white.imshow(white_data, cmap="gray",origin="lower")
-        img_white_mask = ax_white_mask.imshow(white_data, cmap="gray",origin="lower")
+        img_white = ax_white.imshow(white_data, cmap="gray",origin="lower", vmin=vmin, vmax=vmax)
+        img_white_mask = ax_white_mask.imshow(white_data, cmap="gray",origin="lower", vmin=vmin, vmax=vmax)
         img_white_mask = ax_white_mask.imshow(mask_data, cmap="Blues",origin="lower", alpha = 0.2)
         img_rgb = ax_rgb.imshow(rgb,origin="lower")
         img_rgb_mask = ax_rgb_mask.imshow(rgb,origin="lower")
@@ -614,10 +664,10 @@ def make_plots(snrs):
                 ax.plot(local_exclude.x,local_exclude.y,**restexc)
 # Tedious removal of axis labels
         axes = [ax_white, ax_white_mask, ax_rgb, ax_rgb_mask]
-        latleft = [ True, False, True, False ]
-        latright = [ False, True, False, True ]
-        lonbottom = [ False, False, True, True ]
-        lontop = [ True, True, False, False ]
+        latleft = [ True, False, True, False ] #lal
+        latright = [ False, True, False, True ] #lar
+        lonbottom = [ False, False, True, True ] #lob
+        lontop = [ True, True, False, False ] #lot
         for ax, lal, lar, lob, lot in zip(axes, latleft, latright, lonbottom, lontop):
             ax.set_xlim(0,xmax)
             ax.set_ylim(0,ymax)
@@ -640,9 +690,10 @@ def make_plots(snrs):
                 overlay["ra"].set_major_formatter('hh:mm')
             overlay["dec"].set_ticklabel_visible(lar)
             if lar:
-                overlay["dec"].set_major_formatter('hh:mm')
+                overlay["dec"].set_major_formatter('dd:mm')
 
-        output_file = "plots/"+snr.name+".png"
+        output_file = "plots/"+snr.name+".eps"
+#        output_file = "plots/"+snr.name+".png"
         if os.path.exists(output_file):
             renumber(output_file)
         fig.tight_layout(pad=1.0, w_pad=1.0, h_pad=1.0)
