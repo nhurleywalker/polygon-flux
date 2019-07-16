@@ -27,6 +27,9 @@ rc('font',**{'family':'serif','serif':['serif']})
 global nameformat
 nameformat="SNR_G{0:003.1f}{1:+0.1f}"
 
+global newnameformat
+newnameformat="SNR_G{0:s}{1:s}"
+
 # Line markers and colors
 firstsnr = { "marker" : "x" , "linestyle" : "None", "color" : "red" }
 restsnr = { "marker" : "None" , "linestyle" : "-", "color" : "red" }
@@ -61,6 +64,18 @@ class SNR(object):
         self.rms_wide = None # A dictionary of frequencies to local RMS measurements
         self.nbeams_wide = None # A dictionary of frequencies to number of PSFs fit over
         self.fit_wide = None # A dictionary of "flux" -> total flux at 200 MHz; "alpha" -> fitted alpha; "chi2red" -> reduced chi2
+
+def truncate(f, n, plus=False):
+    '''Truncates/pads a float f to n decimal places without rounding'''
+    s = '{}'.format(f)
+    if 'e' in s or 'E' in s:
+        return '{0:.{1}f}'.format(f, n)
+    i, p, d = s.partition('.')
+    if f > 0 and plus is True:
+        x = '.'.join([i, (d+'0'*n)[:n]])
+        return '+'+x
+    else:
+        return '.'.join([i, (d+'0'*n)[:n]])
 
 def gaussian2d(x, y, mux, muy, sigmax, sigmay, theta):
    a = np.cos(theta)**2 / (2*sigmax**2) + np.sin(theta)**2 / (2*sigmay**2)
@@ -122,7 +137,9 @@ def read_snrs():
                snr.loc = SkyCoord("{0:5.3f}d {1:5.3f}".format(row[0],row[1]),frame="galactic",unit=(u.deg,u.deg))
            snr.maj = row[7]/60.
            snr.min = row[8]/60.
-           snr.name  = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
+           snr.pa = 0.0
+           #snr.name = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
+           snr.name = newnameformat.format(truncate(snr.loc.galactic.l.value, 1, plus=False), truncate(snr.loc.galactic.b.value, 1, plus=True))
            snr.known = True
            snrs.append(snr)
 
@@ -139,7 +156,8 @@ def read_snrs():
            snr.maj = row[2]
            snr.min = row[3]
            snr.pa = row[4]
-           snr.name  = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
+           #snr.name  = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
+           snr.name = newnameformat.format(truncate(snr.loc.galactic.l.value, 1, plus=False), truncate(snr.loc.galactic.b.value, 1, plus=True))
            snr.known = False
            snrs.append(snr)
 

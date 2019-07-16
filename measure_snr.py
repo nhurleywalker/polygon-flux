@@ -436,8 +436,7 @@ def test_export_snr(snrs):
     tempsnrs = []
     for snr in snrs:
         file_ext = "pkl"
-# Temporary HACK
-        output_dir = "old_pkls/"
+        output_dir = "pkls/"
         output_file = "{0}/{1}.{2}".format(output_dir, snr.name, file_ext)
         if os.path.exists(output_file):
             print "{0} has already been written.".format(snr.name)
