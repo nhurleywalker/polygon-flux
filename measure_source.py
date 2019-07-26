@@ -10,6 +10,8 @@ import shutil
 import numpy as np
 from astropy.io import fits
 from astropy import wcs
+from astropy.visualization import PercentileInterval
+
 from scipy.interpolate import griddata
 from scipy import ndimage
 # Need a least-squares estimator that gives a useable error estimate
@@ -48,23 +50,29 @@ reticsnr = { "marker" : "None" , "linestyle" : ":", "color" : "green" }
 def poly_plot(fitsfile,makeplots):
     print "Fitting polygons to "+fitsfile
     hdu = fits.open(fitsfile)
-    data = hdu[0].data
+# Remove degenerate axes
+    data = np.squeeze(np.squeeze(hdu[0].data))
     xmax = hdu[0].header["NAXIS1"]
     ymax = hdu[0].header["NAXIS2"]
-    w = wcs.WCS(hdu[0].header)
+    w = wcs.WCS(hdu[0].header, naxis=2)
     try:
         pix2deg = hdu[0].header["CD2_2"]
     except KeyError:
         pix2deg = hdu[0].header["CDELT2"]
 
+# Percentile interval for image normalisation
+    pct = 99.0
+    interval = PercentileInterval(pct)
+    vmin, vmax = interval.get_limits(data)
+
     def update(val):
-        vmin = svmin.val
-        vmax = svmax.val
+#        vmin = svmin.val
+#        vmax = svmax.val
         img.set_clim([svmin.val, svmax.val])
         fig.canvas.draw()
     fig = plt.figure(figsize=(5,5))
     ax = fig.add_axes([0.05,0.15,0.8,0.8])
-    img = ax.imshow(data, cmap="gray")
+    img = ax.imshow(data, cmap="gray", vmin=vmin, vmax=vmax)
     cbaxes = fig.add_axes([0.85, 0.1, 0.03, 0.85]) 
     cb = plt.colorbar(img, cax = cbaxes, orientation="vertical")  
 
@@ -75,8 +83,8 @@ def poly_plot(fitsfile,makeplots):
     vmin0 = np.min(data)
     vmax0 = np.max(data)
     # include the slider: cribbed from https://stackoverflow.com/questions/5611805/using-matplotlib-slider-widget-to-change-clim-in-image
-    svmin = Slider(axmin, "vmin", -5.0, 1.0, valinit=vmin0)
-    svmax = Slider(axmax, "vmax", -1.0, 10.0, valinit=vmax0)
+    svmin = Slider(axmin, "vmin", vmin, vmax, valinit=vmin)
+    svmax = Slider(axmax, "vmax", vmin, vmax, valinit=vmax)
 
     svmin.on_changed(update)
     svmax.on_changed(update)
@@ -97,6 +105,7 @@ def poly_plot(fitsfile,makeplots):
     if len(polypick.points.x):
         sources.x, sources.y = w.wcs_pix2world(zip(polypick.points.x,polypick.points.y),0).transpose()
     if len(polypick.exclude.x):
+        print zip(polypick.exclude.x,polypick.exclude.y)
         exclude.x, exclude.y = w.wcs_pix2world(zip(polypick.exclude.x,polypick.exclude.y),0).transpose()
 
 # Now I have the co-ordinates...
@@ -122,7 +131,7 @@ def make_single_plot(polygon, sources, exclude, fitsfile):
         xmax = hdu[0].header["NAXIS1"]
         ymax = hdu[0].header["NAXIS2"]
 ## Transform polygons into local pixel co-ordinates
-        w = wcs.WCS(hdu[0].header)
+        w = wcs.WCS(hdu[0].header, naxis=2)
         local_polygon = Coords()
         local_polygon.x, local_polygon.y = w.wcs_world2pix(zip(polygon.x,polygon.y),0).transpose()
         local_sources = Coords()
@@ -132,12 +141,22 @@ def make_single_plot(polygon, sources, exclude, fitsfile):
         if len(exclude.x):
             local_exclude.x, local_exclude.y = w.wcs_world2pix(zip(exclude.x,exclude.y),0).transpose()
 
+# Make image visible by using interval normalisation
+# Percentile interval for image normalisation
+        pct = 98.5
+        interval = PercentileInterval(pct)
+        vmin, vmax = interval.get_limits(data)
+
 # Using http://docs.astropy.org/en/stable/visualization/wcsaxes/index.html
         fig = plt.figure()
         ax = fig.add_subplot(121, projection=w)
         ax_interp = fig.add_subplot(122, projection=w)
-        img = ax.imshow(data, cmap="gray",origin="lower")
-        img_interp = ax_interp.imshow(data_interp, cmap="gray",origin="lower")
+        img = ax.imshow(data, cmap="gray",origin="lower", vmin=vmin, vmax=vmax)
+        img_interp = ax_interp.imshow(data_interp, cmap="gray",origin="lower", vmin=vmin, vmax=vmax)
+#        img = ax.imshow(data, cmap="gray",origin="lower", norm = matplotlib.colors.LogNorm(vmin=0.0, vmax=np.nanmax(data)))
+#        img_interp = ax_interp.imshow(data_interp, cmap="gray",origin="lower", norm = matplotlib.colors.LogNorm(vmin=0.0, vmax=np.nanmax(data)))
+#        img = ax.imshow(data, cmap="gray",origin="lower", norm = matplotlib.colors.SymLogNorm(linthresh=0.03, linscale=0.03, vmin=np.nanmin(data), vmax=np.nanmax(data)))
+#        img_interp = ax_interp.imshow(data_interp, cmap="gray",origin="lower", norm = matplotlib.colors.SymLogNorm(linthresh=0.03, linscale=0.03, vmin=np.nanmin(data), vmax=np.nanmax(data)))
         for a in ax, ax_interp:
             overlay = a.get_coords_overlay("galactic")
             overlay.grid(axes = a, color='white', ls='dotted')

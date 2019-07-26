@@ -250,7 +250,7 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     beamvolume = (1.1331 * bmaj * bmin) # gaussian beam conversion
 
     # Transform the polygon and source arrays into local pixel co-ordinates for further operations
-    w = wcs.WCS(hdu[0].header)
+    w = wcs.WCS(hdu[0].header, naxis=2)
     local_polygon = Coords()
     local_polygon.x, local_polygon.y = w.wcs_world2pix(zip(polygon.x,polygon.y),0).transpose()
     local_sources = Coords()
