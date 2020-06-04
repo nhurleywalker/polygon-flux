@@ -183,7 +183,7 @@ def make_single_plot(polygon, sources, exclude, fitsfile):
         lat = ax_mask.coords['dec']
         lat.set_ticklabel_visible(False)
         lat.set_ticks_visible(False)
-        fig.savefig(fitsfile.replace(".fits",".png"))
+        fig.savefig(fitsfile.replace(".fits",".png"), bbox_inches="tight")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
