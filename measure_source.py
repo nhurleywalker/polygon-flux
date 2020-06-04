@@ -123,9 +123,9 @@ def make_single_plot(polygon, sources, exclude, fitsfile):
         print "Making attractive FITS image plot for "+fitsfile
 # Load image data
         hdu = fits.open(fitsfile)
-        hdu_interp = fits.open(fitsfile.replace(".fits","_interp.fits"))
+        hdu_mask = fits.open(fitsfile.replace(".fits","_mask.fits"))
         data = np.squeeze(np.squeeze(hdu[0].data))
-        data_interp = hdu_interp[0].data
+        data_mask = hdu_mask[0].data
 ## Get relevant header info
 ## Later: add bmaj bmin as ellipse
         xmax = hdu[0].header["NAXIS1"]
@@ -149,25 +149,40 @@ def make_single_plot(polygon, sources, exclude, fitsfile):
 
 # Using http://docs.astropy.org/en/stable/visualization/wcsaxes/index.html
         fig = plt.figure()
+# Unadorned panel
         ax = fig.add_subplot(121, projection=w)
-        ax_interp = fig.add_subplot(122, projection=w)
-        img = ax.imshow(data, cmap="gray",origin="lower", vmin=vmin, vmax=vmax)
-        img_interp = ax_interp.imshow(data_interp, cmap="gray",origin="lower", vmin=vmin, vmax=vmax)
+# Panel with the backgrounding etc shown
+        ax_mask = fig.add_subplot(122, projection=w)
+        img_l = ax.imshow(data, cmap="gray",origin="lower", vmin=vmin, vmax=vmax)
+        img_r = ax_mask.imshow(data, cmap="gray",origin="lower", vmin=vmin, vmax=vmax)
+        img_mask = ax_mask.imshow(data_mask, cmap="Reds",origin="lower", vmin=-9999., vmax=-9999., alpha=0.3)
 #        img = ax.imshow(data, cmap="gray",origin="lower", norm = matplotlib.colors.LogNorm(vmin=0.0, vmax=np.nanmax(data)))
-#        img_interp = ax_interp.imshow(data_interp, cmap="gray",origin="lower", norm = matplotlib.colors.LogNorm(vmin=0.0, vmax=np.nanmax(data)))
+#        img_mask = ax_mask.imshow(data_mask, cmap="gray",origin="lower", norm = matplotlib.colors.LogNorm(vmin=0.0, vmax=np.nanmax(data)))
 #        img = ax.imshow(data, cmap="gray",origin="lower", norm = matplotlib.colors.SymLogNorm(linthresh=0.03, linscale=0.03, vmin=np.nanmin(data), vmax=np.nanmax(data)))
-#        img_interp = ax_interp.imshow(data_interp, cmap="gray",origin="lower", norm = matplotlib.colors.SymLogNorm(linthresh=0.03, linscale=0.03, vmin=np.nanmin(data), vmax=np.nanmax(data)))
-        for a in ax, ax_interp:
+#        img_mask = ax_mask.imshow(data_mask, cmap="gray",origin="lower", norm = matplotlib.colors.SymLogNorm(linthresh=0.03, linscale=0.03, vmin=np.nanmin(data), vmax=np.nanmax(data)))
+        for a in ax, ax_mask:
             overlay = a.get_coords_overlay("galactic")
             overlay.grid(axes = a, color='white', ls='dotted')
             a.set_xlim(0,xmax)
             a.set_ylim(0,ymax)
-            if len(local_polygon.x):
-                a.plot(local_polygon.x,local_polygon.y,**restsnr)
-            if len(local_sources.x):
-                a.plot(local_sources.x,local_sources.y,**srcmark)
-            if len(local_exclude.x):
-                a.plot(local_exclude.x,local_exclude.y,**restexc)
+            lon = a.coords['ra']
+            lon.set_axislabel("Right Ascension (J2000)")
+            lon.set_major_formatter('hh:mm')
+# Nice Dec labels for left panel
+        lat = ax.coords['dec']
+        lat.set_axislabel("Declination (J2000)")
+        lat.set_major_formatter('dd:mm')
+# Overlay plot of excluded regions and selected region
+        if len(local_polygon.x):
+            ax_mask.plot(local_polygon.x,local_polygon.y,**restsnr)
+        if len(local_sources.x):
+            ax_mask.plot(local_sources.x,local_sources.y,**srcmark)
+        if len(local_exclude.x):
+            ax_mask.plot(local_exclude.x,local_exclude.y,**restexc)
+# No Dec labels for right panel
+        lat = ax_mask.coords['dec']
+        lat.set_ticklabel_visible(False)
+        lat.set_ticks_visible(False)
         fig.savefig(fitsfile.replace(".fits",".png"))
 
 if __name__ == "__main__":
@@ -185,5 +200,18 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit()
 
-    # Perform the fitting
-    poly_plot(options.fitsfile,options.makeplots)
+# Test that the image is square -- otherwise the dilation to find the border fails
+    square = True
+    header = fits.getheader(options.fitsfile)
+    if header["NAXIS"] == 4:
+        if header["NAXIS3"] != header["NAXIS4"]:
+            square = False
+    else:
+        if header["NAXIS1"] != header["NAXIS2"]:
+            square = False
+
+    if square is True:
+        # Perform the fitting
+        poly_plot(options.fitsfile,options.makeplots)
+    else:
+        print "Please provide a square FITS image."
