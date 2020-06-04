@@ -124,7 +124,7 @@ def make_single_plot(polygon, sources, exclude, fitsfile):
 # Load image data
         hdu = fits.open(fitsfile)
         hdu_interp = fits.open(fitsfile.replace(".fits","_interp.fits"))
-        data = hdu[0].data
+        data = np.squeeze(np.squeeze(hdu[0].data))
         data_interp = hdu_interp[0].data
 ## Get relevant header info
 ## Later: add bmaj bmin as ellipse
