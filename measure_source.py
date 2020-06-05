@@ -155,7 +155,7 @@ def make_single_plot(polygon, sources, exclude, fitsfile):
         ax_mask = fig.add_subplot(122, projection=w)
         img_l = ax.imshow(data, cmap="gray",origin="lower", vmin=vmin, vmax=vmax)
         img_r = ax_mask.imshow(data, cmap="gray",origin="lower", vmin=vmin, vmax=vmax)
-        img_mask = ax_mask.imshow(data_mask, cmap="Reds",origin="lower", vmin=-9999., vmax=-9999., alpha=0.3)
+        img_mask = ax_mask.imshow(data_mask, cmap="cool_r",origin="lower", vmin=9999., vmax=9999., alpha=0.6)
 #        img = ax.imshow(data, cmap="gray",origin="lower", norm = matplotlib.colors.LogNorm(vmin=0.0, vmax=np.nanmax(data)))
 #        img_mask = ax_mask.imshow(data_mask, cmap="gray",origin="lower", norm = matplotlib.colors.LogNorm(vmin=0.0, vmax=np.nanmax(data)))
 #        img = ax.imshow(data, cmap="gray",origin="lower", norm = matplotlib.colors.SymLogNorm(linthresh=0.03, linscale=0.03, vmin=np.nanmin(data), vmax=np.nanmax(data)))
