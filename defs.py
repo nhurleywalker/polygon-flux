@@ -97,7 +97,7 @@ def is_non_zero_file(fpath):
 #                                          l b HH MM SS DD MM 
 def read_snrs():
     if not os.path.exists("DAG.txt") and not os.path.exists("candidates.txt"):
-        print "Neither DAG.txt nor candidates.txt exist so I don't know what to search for."
+        print("Neither DAG.txt nor candidates.txt exist so I don't know what to search for.")
         sys.exit(1)
         
     snrs = []
@@ -161,7 +161,7 @@ def read_snrs():
            snr.known = False
            snrs.append(snr)
 
-    print "Read "+str(len(snrs))+" SNRs from text files"
+    print("Read "+str(len(snrs))+" SNRs from text files")
     return snrs
 
 def create_index_array(hdu):
@@ -192,15 +192,15 @@ class PolyPick:
     def __call__(self, event):
         if event.inaxes!=self.ax.axes: return
         if event.button == 1:
-            print "Selected coords {0:5.4f}, {1:5.4f}".format(event.xdata,event.ydata)
+            print("Selected coords {0:5.4f}, {1:5.4f}".format(event.xdata,event.ydata))
             self.coords.x.append(event.xdata)
             self.coords.y.append(event.ydata)
         elif event.button == 2:
-            print "Selecting source at {0:5.4f}, {1:5.4f} for fitting".format(event.xdata,event.ydata)
+            print("Selecting source at {0:5.4f}, {1:5.4f} for fitting".format(event.xdata,event.ydata))
             self.points.x.append(event.xdata)
             self.points.y.append(event.ydata)
         elif event.button == 3:
-            print "Selecting coords at {0:5.4f}, {1:5.4f} to remove from background fit".format(event.xdata,event.ydata)
+            print("Selecting coords at {0:5.4f}, {1:5.4f} to remove from background fit".format(event.xdata,event.ydata))
             self.exclude.x.append(event.xdata)
             self.exclude.y.append(event.ydata)
 
@@ -228,7 +228,6 @@ class PolyPick:
 #         return self.coords.x, self.coords.y
 
 def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
-    print fitsfile
     hdu = fits.open(fitsfile)
 
 # Set any NaN areas to zero or the interpolation will fail
@@ -273,7 +272,7 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
 #            radius = bmaj/pix2deg
 # Exclude all indices inside the source from the interpolation
 # TODO: maybe change this so it's more the shape of the PSF, to avoid wrecking perfectly useable bits of the image?
-            print x, y, bmaj/(2*pix2deg), bmin/(2*pix2deg), np.radians(bpa)
+            print(x, y, bmaj/(2*pix2deg), bmin/(2*pix2deg), np.radians(bpa))
             g2d = gaussian2d(grid_x, grid_y, y, x, bmaj/(2*pix2deg), bmin/(2*pix2deg), np.radians(180.-bpa))
             g = np.ravel(g2d)
             useforinterp = np.where(g < 0.1)
@@ -329,7 +328,7 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     # Note that we have to reshape the array back into 2D, otherwise it is just a long 1D list
 
     inner = np.reshape(ndimage.binary_dilation(np.reshape(inside,(xmax,ymax)),iterations=4),xmax*ymax)
-    outer = np.reshape(ndimage.binary_dilation(np.reshape(inside,(xmax,ymax)),iterations=20),xmax*ymax)
+    outer = np.reshape(ndimage.binary_dilation(np.reshape(inside,(xmax,ymax)),iterations=10),xmax*ymax)
 # XOR operation: want to save the area where outer is True but inner is False,
 # and exclude the areas where both are True (the SNR) and both are False (the rest of the image)
     bkger = [ a != b for a,b in zip(inner,outer)]
@@ -382,7 +381,7 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     final_flux = total_flux - (bkg_flux * nbeams) # - source_flux
 
     #print "Number of beams searched: {0} \n Total flux density (Jy): {1} \n Total source flux density (Jy): {2} \n Background flux density (Jy): {3}\n Number of beams interpolated over after finding sources: {4}\n Final flux density (Jy): {5}".format(nbeams, total_flux, source_flux, bkg_flux, len(sources.x), final_flux)
-    print "Number of beams searched: {0} \n Total flux density (Jy): {1} \n Background flux density (Jy): {2}\n Number of beams interpolated over after finding sources: {3}\n Final flux density (Jy): {4}".format(nbeams, total_flux, bkg_flux, len(sources.x), final_flux)
+    print("Number of beams searched: {0} \n Total flux density (Jy): {1} \n Background flux density (Jy): {2}\n Number of beams interpolated over after finding sources: {3}\n Final flux density (Jy): {4}".format(nbeams, total_flux, bkg_flux, len(sources.x), final_flux))
 
     #return final_flux, total_flux, source_flux, bkg_flux, rms
     return final_flux, total_flux, bkg_flux, rms, nbeams

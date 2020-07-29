@@ -48,7 +48,7 @@ restexc = { "marker" : "None" , "linestyle" : "--", "color" : "blue" }
 reticsnr = { "marker" : "None" , "linestyle" : ":", "color" : "green" }
 
 def poly_plot(fitsfile,makeplots):
-    print "Fitting polygons to "+fitsfile
+    print("Fitting polygons to "+fitsfile)
     hdu = fits.open(fitsfile)
 # Remove degenerate axes
     data = np.squeeze(np.squeeze(hdu[0].data))
@@ -105,7 +105,7 @@ def poly_plot(fitsfile,makeplots):
     if len(polypick.points.x):
         sources.x, sources.y = w.wcs_pix2world(zip(polypick.points.x,polypick.points.y),0).transpose()
     if len(polypick.exclude.x):
-        print zip(polypick.exclude.x,polypick.exclude.y)
+        print(zip(polypick.exclude.x,polypick.exclude.y))
         exclude.x, exclude.y = w.wcs_pix2world(zip(polypick.exclude.x,polypick.exclude.y),0).transpose()
 
 # Now I have the co-ordinates...
@@ -117,10 +117,10 @@ def poly_plot(fitsfile,makeplots):
         if makeplots is True:
             make_single_plot(polygon, sources, exclude, fitsfile)
     else:
-        print "Failed to draw any points; exiting."
+        print("Failed to draw any points; exiting.")
 
 def make_single_plot(polygon, sources, exclude, fitsfile):
-        print "Making attractive FITS image plot for "+fitsfile
+        print("Making attractive FITS image plot for "+fitsfile)
 # Load image data
         hdu = fits.open(fitsfile)
         hdu_mask = fits.open(fitsfile.replace(".fits","_mask.fits"))
@@ -214,4 +214,4 @@ if __name__ == "__main__":
         # Perform the fitting
         poly_plot(options.fitsfile,options.makeplots)
     else:
-        print "Please provide a square FITS image."
+        print("Please provide a square FITS image.")

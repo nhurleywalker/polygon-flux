@@ -376,11 +376,11 @@ def plot_spectrum(snr,wide=False):
 
     print "Spectrum fit, making plot for "+snr.name
     if len(freqs) > 4:
-        outpng = ("./spectra/"+snr.name+".eps")
-#        outpng = ("./spectra/"+snr.name+".png")
+#        outpng = ("./spectra/"+snr.name+".eps")
+        outpng = ("./spectra/"+snr.name+".png")
     else:
-        outpng = ("./spectra/"+snr.name+"_wide.eps")
-#        outpng = ("./spectra/"+snr.name+"_wide.png")
+#       outpng = ("./spectra/"+snr.name+"_wide.eps")
+        outpng = ("./spectra/"+snr.name+"_wide.png")
     # Plot
     fig = plt.figure(figsize=(10,5))
     # LaTeX-safe
@@ -614,7 +614,7 @@ def make_plots(snrs):
 
         rgb = np.dstack([r,g,b])
 
-        print("The colour scales for the GLEAM RGB cube are {0:2.1f}--{1:2.1f}, {2:2.1f}--{3:2.1f}, and {4:2.1f}--{5:2.1f}\,Jy\perbeam for R, G, and B, respectively.".format(ir[0], ir[1], ig[0], ig[1], ib[0], ib[1]))
+        print("The colour scales for the GLEAM 170--231MHz image and R, G, and B of the RGB cube are {0:2.1f}--{1:2.1f}, {2:2.1f}--{3:2.1f}, {4:2.1f}--{5:2.1f}, and {6:2.1f}--{7:2.1f}\,Jy\perbeam, respectively.".format(vmin, vmax, ir[0], ir[1], ig[0], ig[1], ib[0], ib[1]))
 
 # temporary: changing variable names
         white_data = cutout_white.data
@@ -691,8 +691,8 @@ def make_plots(snrs):
             if lar:
                 overlay["dec"].set_major_formatter('dd:mm')
 
-        output_file = "plots/"+snr.name+".eps"
-#        output_file = "plots/"+snr.name+".png"
+#        output_file = "plots/"+snr.name+".eps"
+        output_file = "plots/"+snr.name+".png"
         if os.path.exists(output_file):
             renumber(output_file)
         fig.tight_layout(pad=1.0, w_pad=1.0, h_pad=1.0)
