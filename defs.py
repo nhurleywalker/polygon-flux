@@ -167,9 +167,9 @@ def read_snrs():
 def create_index_array(hdu):
     # Initialise an array of co-ordinate pairs for the full array
     indexes = np.empty(((hdu[0].data.shape[0])*(hdu[0].data.shape[1]),2),dtype=int)
-    idx = np.array([ (j,0) for j in xrange(hdu[0].data.shape[1])])
+    idx = np.array([ (j,0) for j in range(hdu[0].data.shape[1])])
     j=hdu[0].data.shape[1]
-    for i in xrange(hdu[0].data.shape[0]):
+    for i in range(hdu[0].data.shape[0]):
         idx[:,1]=i
         indexes[i*j:(i+1)*j] = idx
     return indexes
@@ -251,17 +251,18 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     # Transform the polygon and source arrays into local pixel co-ordinates for further operations
     w = wcs.WCS(hdu[0].header, naxis=2)
     local_polygon = Coords()
-    local_polygon.x, local_polygon.y = w.wcs_world2pix(zip(polygon.x,polygon.y),0).transpose()
+    local_polygon.x, local_polygon.y = w.wcs_world2pix(polygon.x,polygon.y,0)
     local_sources = Coords()
     if len(sources.x):
-        local_sources.x, local_sources.y = w.wcs_world2pix(zip(sources.x,sources.y),0).transpose()
+        local_sources.x, local_sources.y = w.wcs_world2pix(sources.x,sources.y,0)
     local_exclude = Coords()
     if len(exclude.x):
-        local_exclude.x, local_exclude.y = w.wcs_world2pix(zip(exclude.x,exclude.y),0).transpose()
+        local_exclude.x, local_exclude.y = w.wcs_world2pix(exclude.x,exclude.y,0)
     
     indexes = create_index_array(hdu)
     # Adapted from https://stackoverflow.com/questions/36399381/whats-the-fastest-way-of-checking-if-a-point-is-inside-a-polygon-in-python
-    path = mpltPath.Path(zip(local_polygon.x,local_polygon.y))
+    print(indexes)
+    path = mpltPath.Path(list(zip(local_polygon.x,local_polygon.y)))
 # Array of booleans of length len(indexes)
     inside = path.contains_points(indexes)
 
@@ -306,7 +307,7 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     newlist.writeto(outname,overwrite=True)
 
     if len(local_exclude.x):
-        epath = mpltPath.Path(zip(local_exclude.x,local_exclude.y))
+        epath = mpltPath.Path(list(zip(local_exclude.x,local_exclude.y)))
         ezone = epath.contains_points(indexes)
 
     # Total flux

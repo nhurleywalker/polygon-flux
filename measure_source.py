@@ -77,8 +77,12 @@ def poly_plot(fitsfile,makeplots):
     cb = plt.colorbar(img, cax = cbaxes, orientation="vertical")  
 
     axcolor = 'white'
-    axmin = fig.add_axes([0.05, 0.05, 0.2, 0.02], axisbg=axcolor)
-    axmax  = fig.add_axes([0.44, 0.05, 0.2, 0.02], axisbg=axcolor)
+    try:
+        axmin = fig.add_axes([0.05, 0.05, 0.2, 0.02], axisbg=axcolor)
+        axmax  = fig.add_axes([0.44, 0.05, 0.2, 0.02], axisbg=axcolor)
+    except AttributeError:
+        axmin = fig.add_axes([0.05, 0.05, 0.2, 0.02], facecolor=axcolor)
+        axmax  = fig.add_axes([0.44, 0.05, 0.2, 0.02], facecolor=axcolor)
 
     vmin0 = np.min(data)
     vmax0 = np.max(data)
@@ -103,15 +107,16 @@ def poly_plot(fitsfile,makeplots):
     sources = Coords()
     exclude = Coords()
     if len(polypick.points.x):
-        sources.x, sources.y = w.wcs_pix2world(zip(polypick.points.x,polypick.points.y),0).transpose()
+#        sources.x, sources.y = w.wcs_pix2world(zip(polypick.points.x,polypick.points.y),0).transpose()
+        sources.x, sources.y = w.wcs_pix2world(polypick.points.x,polypick.points.y,0)
     if len(polypick.exclude.x):
-        print(zip(polypick.exclude.x,polypick.exclude.y))
-        exclude.x, exclude.y = w.wcs_pix2world(zip(polypick.exclude.x,polypick.exclude.y),0).transpose()
+#        exclude.x, exclude.y = w.wcs_pix2world(zip(polypick.exclude.x,polypick.exclude.y),0).transpose()
+        exclude.x, exclude.y = w.wcs_pix2world(polypick.exclude.x,polypick.exclude.y,0)
 
 # Now I have the co-ordinates...
 # Go measure the flux densities
     if len(polypick.coords.x):
-        polygon.x, polygon.y = w.wcs_pix2world(zip(polypick.coords.x,polypick.coords.y),0).transpose()
+        polygon.x, polygon.y = w.wcs_pix2world(polypick.coords.x,polypick.coords.y,0)
         find_fluxes(polygon, sources, exclude, fitsfile)
 # And make nice plots
         if makeplots is True:
@@ -133,13 +138,13 @@ def make_single_plot(polygon, sources, exclude, fitsfile):
 ## Transform polygons into local pixel co-ordinates
         w = wcs.WCS(hdu[0].header, naxis=2)
         local_polygon = Coords()
-        local_polygon.x, local_polygon.y = w.wcs_world2pix(zip(polygon.x,polygon.y),0).transpose()
+        local_polygon.x, local_polygon.y = w.wcs_world2pix(polygon.x,polygon.y,0)
         local_sources = Coords()
         if len(sources.x):
-            local_sources.x, local_sources.y = w.wcs_world2pix(zip(sources.x,sources.y),0).transpose()
+            local_sources.x, local_sources.y = w.wcs_world2pix(sources.x,sources.y,0)
         local_exclude = Coords()
         if len(exclude.x):
-            local_exclude.x, local_exclude.y = w.wcs_world2pix(zip(exclude.x,exclude.y),0).transpose()
+            local_exclude.x, local_exclude.y = w.wcs_world2pix(exclude.x,exclude.y,0)
 
 # Make image visible by using interval normalisation
 # Percentile interval for image normalisation
