@@ -195,7 +195,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     group1 = parser.add_argument_group("files to read")
     group1.add_argument('--fitsfile', dest='fitsfile', default=None, \
-                        help="Low-resolution file to read")
+                        help="Input (square, 2D) FITS file to read")
     group2 = parser.add_argument_group("Generate plots and images")
     group2.add_argument('--plot', dest='makeplots', default=False, action='store_true', \
                         help="Make png plots of the FITS image (default = False)")
