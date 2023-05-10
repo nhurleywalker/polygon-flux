@@ -12,6 +12,7 @@ from astropy import units as u
 
 from scipy.interpolate import griddata
 from scipy import ndimage
+import scipy.linalg
 
 import matplotlib
 from matplotlib import pyplot as plt
@@ -22,6 +23,9 @@ import numpy as np
 from matplotlib import rc
 rc('text', usetex=True)
 rc('font',**{'family':'serif','serif':['serif']})
+
+import warnings
+warnings.simplefilter('error', UserWarning)
 
 # SNR naming format
 global nameformat
@@ -103,63 +107,68 @@ def read_snrs():
     snrs = []
 
     if is_non_zero_file("DAG.txt"):
-        tempcat = np.genfromtxt("DAG.txt", delimiter=(6,6,4,3,3,5,3), comments="#")
-        # Elliptical radii
-        sizestrs = np.genfromtxt("DAG.txt",usecols=7,dtype=str, comments="#")
-# Makes it work for single-line files
-        ac = 1
-        if not len(sizestrs.shape):
-            ac = 0
-            sizestrs = np.array([sizestrs])
-        a = []
-        b = []
-        for sizestr in sizestrs:
-           a.append(sizestr.replace("?","").split("x")[0])
-           if "x" in sizestr:
-               b.append(sizestr.replace("?","").split("x")[1])
-           else:
-                b.append(sizestr.replace("?",""))
-        snrcat = np.concatenate([tempcat,np.squeeze(np.array([a,b],dtype='float')).transpose()],axis=ac)
-# Makes it work for single-line files
-        if len(snrcat.shape)==1:
-           snrcat = [snrcat]
+        try:
+            tempcat = np.genfromtxt("DAG.txt", delimiter=(6,6,4,3,3,5,3), comments="#")
+            dag = True
+        except UserWarning:
+            dag = False
+        if dag is True:
+            # Elliptical radii
+            sizestrs = np.genfromtxt("DAG.txt",usecols=7,dtype=str, comments="#")
+    # Makes it work for single-line files
+            ac = 1
+            if not len(sizestrs.shape):
+                ac = 0
+                sizestrs = np.array([sizestrs])
+            a = []
+            b = []
+            for sizestr in sizestrs:
+               a.append(sizestr.replace("?","").split("x")[0])
+               if "x" in sizestr:
+                   b.append(sizestr.replace("?","").split("x")[1])
+               else:
+                    b.append(sizestr.replace("?",""))
+            snrcat = np.concatenate([tempcat,np.squeeze(np.array([a,b],dtype='float')).transpose()],axis=ac)
+    # Makes it work for single-line files
+            if len(snrcat.shape)==1:
+               snrcat = [snrcat]
 
-        # Transform the array into a list of SNR objects
-        for row in snrcat:
-           snr = SNR()
-        #   l = row[0]
-        #   b = row[1]
-        #   RA = 15*(row[2]+(row[3]/60.)+(row[4]/3600.))
-        #   Dec = row[5]+(row[6]/60.)
-           try:
-               snr.loc = SkyCoord("{0:02.0f}h{1:02.0f}m{2:02.0f}s {3:+02.0f}d{4:02.0f}m00s".format(row[2],row[3],row[4],row[5],row[6]))
-           except:
-               snr.loc = SkyCoord("{0:5.3f}d {1:5.3f}".format(row[0],row[1]),frame="galactic",unit=(u.deg,u.deg))
-           snr.maj = row[7]/60.
-           snr.min = row[8]/60.
-           snr.pa = 0.0
-           #snr.name = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
-           snr.name = newnameformat.format(truncate(snr.loc.galactic.l.value, 1, plus=False), truncate(snr.loc.galactic.b.value, 1, plus=True))
-           snr.known = True
-           snrs.append(snr)
+            # Transform the array into a list of SNR objects
+            for row in snrcat:
+               snr = SNR()
+            #   l = row[0]
+            #   b = row[1]
+            #   RA = 15*(row[2]+(row[3]/60.)+(row[4]/3600.))
+            #   Dec = row[5]+(row[6]/60.)
+               try:
+                   snr.loc = SkyCoord("{0:02.0f}h{1:02.0f}m{2:02.0f}s {3:+02.0f}d{4:02.0f}m00s".format(row[2],row[3],row[4],row[5],row[6]))
+               except:
+                   snr.loc = SkyCoord("{0:5.3f}d {1:5.3f}".format(row[0],row[1]),frame="galactic",unit=(u.deg,u.deg))
+               snr.maj = row[7]/60.
+               snr.min = row[8]/60.
+               snr.pa = 0.0
+               #snr.name = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
+               snr.name = newnameformat.format(truncate(snr.loc.galactic.l.value, 1, plus=False), truncate(snr.loc.galactic.b.value, 1, plus=True))
+               snr.known = True
+               snrs.append(snr)
 
-    # Get the candidate SNRs from my text file
-    if is_non_zero_file("candidates.txt"):
-        tempcat = np.loadtxt("candidates.txt", comments="#")
-# Makes it work for single-line files
-        if len(tempcat.shape)==1:
-           tempcat = [tempcat]
+        # Get the candidate SNRs from my text file
+        if is_non_zero_file("candidates.txt"):
+            tempcat = np.loadtxt("candidates.txt", comments="#")
+    # Makes it work for single-line files
+            if len(tempcat.shape)==1:
+               tempcat = [tempcat]
 
-        for row in tempcat:
-           snr = SNR()
-           snr.loc = SkyCoord(ra = row[0]*u.degree, dec = row[1]*u.degree, frame='fk5')
-           snr.maj = row[2]
-           snr.min = row[3]
-           snr.pa = row[4]
-           #snr.name  = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
-           snr.name = newnameformat.format(truncate(snr.loc.galactic.l.value, 1, plus=False), truncate(snr.loc.galactic.b.value, 1, plus=True))
-           snr.known = False
-           snrs.append(snr)
+            for row in tempcat:
+               snr = SNR()
+               snr.loc = SkyCoord(ra = row[0]*u.degree, dec = row[1]*u.degree, frame='fk5')
+               snr.maj = row[2]
+               snr.min = row[3]
+               snr.pa = row[4]
+               #snr.name  = nameformat.format(snr.loc.galactic.l.value,snr.loc.galactic.b.value)
+               snr.name = newnameformat.format(truncate(snr.loc.galactic.l.value, 1, plus=False), truncate(snr.loc.galactic.b.value, 1, plus=True))
+               snr.known = False
+               snrs.append(snr)
 
     print("Read "+str(len(snrs))+" SNRs from text files")
     return snrs
@@ -227,7 +236,7 @@ class PolyPick:
 #    def coords():
 #         return self.coords.x, self.coords.y
 
-def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
+def find_fluxes(polygon, sources, exclude, fitsfile, bkgtype="mean", output=False):
     hdu = fits.open(fitsfile)
 
 # Set any NaN areas to zero or the interpolation will fail
@@ -251,13 +260,15 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     # Transform the polygon and source arrays into local pixel co-ordinates for further operations
     w = wcs.WCS(hdu[0].header, naxis=2)
     local_polygon = Coords()
-    local_polygon.x, local_polygon.y = w.wcs_world2pix(polygon.x,polygon.y,0)
+    local_polygon.x, local_polygon.y = w.world_to_pixel(SkyCoord(polygon.x, polygon.y, unit=(u.deg, u.deg)))
     local_sources = Coords()
     if len(sources.x):
-        local_sources.x, local_sources.y = w.wcs_world2pix(sources.x,sources.y,0)
+#        local_sources.x, local_sources.y = w.wcs_world2pix(list(sources.x),list(sources.y),0)
+        local_sources.x, local_sources.y = w.world_to_pixel(SkyCoord(sources.x, sources.y, unit=(u.deg, u.deg)))
     local_exclude = Coords()
     if len(exclude.x):
-        local_exclude.x, local_exclude.y = w.wcs_world2pix(exclude.x,exclude.y,0)
+#        local_exclude.x, local_exclude.y = w.wcs_world2pix(list(exclude.x),list(exclude.y),0)
+        local_exclude.x, local_exclude.y = w.world_to_pixel(SkyCoord(exclude.x, exclude.y, unit=(u.deg, u.deg)))
     
     indexes = create_index_array(hdu)
     # Adapted from https://stackoverflow.com/questions/36399381/whats-the-fastest-way-of-checking-if-a-point-is-inside-a-polygon-in-python
@@ -342,47 +353,85 @@ def find_fluxes(polygon, sources, exclude, fitsfile):#, export):
     else:
         useforbkg = bkg_indices
 
-   # Save mask as a FITS file
-    header_new = hdu[0].header
-        # Add a keyword so we know this one has been backgrounded
-    header_new["MASK"] = "TRUE"
+    # Obtain background measure from the ring
     mask = np.copy(hdu[0].data)
     mask[:,:] = np.nan
-    # New feature: Now subtract the mean of the ring from the total_flux
+
     bkg_list = []
     for ix in indexes[useforbkg]:
        bkg_list.append(hdu[0].data[ix[1],ix[0]]) # In Jy/pix
        mask[ix[1],ix[0]] = hdu[0].data[ix[1],ix[0]] # Unset the NaNs of the mask
-# Average background level in Jy/pix
-    bkg_flux = np.mean(bkg_list)
-# RMS of this area in Jy/pix
-    rms = np.std(bkg_list)
 
-    new = fits.PrimaryHDU(mask,header=header_new) #create new hdu
-    outname = fitsfile.replace(".fits","_mask.fits")
-    newlist = fits.HDUList([new]) #create new hdulist
-    newlist.writeto(outname,overwrite=True)
+    if output == True:
+       # Save mask as a FITS file
+        header_new = hdu[0].header
+        # Add a keyword so we know this one is the mask for the background
+        header_new["MASK"] = "TRUE"
+        new = fits.PrimaryHDU(mask,header=header_new) #create new hdu
+        outname = fitsfile.replace(".fits","_mask.fits")
+        newlist = fits.HDUList([new]) #create new hdulist
+        newlist.writeto(outname,overwrite=True)
 
-#    source_flux = 0.0
-#    for x,y in zip(local_sources.x,local_sources.y):
-#       if path.contains_points([[x,y]]):
-#    # Search for the local maximum within a beam-width
-#    # Potential future improvement: modify this so it only does it for the white image, and then uses that location for all sources
-#           data_patch = hdu[0].data[np.floor(y-bmaj/pix2deg).astype(int):np.ceil(y+bmaj/pix2deg).astype(int),np.floor(x-bmaj/pix2deg).astype(int):np.ceil(x+bmaj/pix2deg).astype(int)]
-#           peak_flux = np.max(data_patch) # In Jy/pix, but we assume the sources are unresolved
-##
-##           bkg_index = np.unravel_index(data_patch.argmax(), data_patch.shape)
-##           interp_patch = interp.T[np.floor(y-bmaj/pix2deg).astype(int):np.ceil(y+bmaj/pix2deg).astype(int),np.floor(x-bmaj/pix2deg).astype(int):np.ceil(x+bmaj/pix2deg).astype(int)]
-##           bkg_at_src = interp_patch[bkg_index]
-##           source_flux += (peak_flux - bkg_at_src)
-#
-## Subtract the average surface brightness of the remnant from the source flux
-#           source_flux += (peak_flux - (total_flux / nbeams) )
+    # RMS of the area used for backgrounding in Jy/pix
+        rms = np.std(bkg_list)
 
+    if bkgtype == "mean":
+    # Average background level in Jy/pix
+        bkg_flux = np.mean(bkg_list)
+        print("Using mean background")
+        if output == True:
+            new = fits.PrimaryHDU(hdu[0].data - bkg_flux,header=header_new) #create new hdu
+            outname = fitsfile.replace(".fits","_meanbkgsub.fits")
+            newlist = fits.HDUList([new]) #create new hdulist
+            newlist.writeto(outname,overwrite=True)
+
+
+    if bkgtype == "interp":
+    # Interpolated 2D plane for the background
+    # https://gist.github.com/amroamroamro/1db8d69b4b65e8bc66a6
+        data = np.vstack([indexes[useforbkg].T[0], indexes[useforbkg].T[1], bkg_list])
+        data = data.T
+        X,Y = indexes.T
+        XX = X.flatten()
+        YY = Y.flatten()
+
+        A = np.c_[data[:,0], data[:,1], np.ones(data.shape[0])]
+        C,_,_,_ = scipy.linalg.lstsq(A, data[:,2])    # coefficients
+        
+        # evaluate it on grid
+        Z = C[0]*X + C[1]*Y + C[2]
+        Z = Z.astype(np.float32)
+
+        newbkg = Z.reshape(hdu[0].data.shape)
+
+        if output == True:
+            new = fits.PrimaryHDU(newbkg,header=header_new) #create new hdu
+            outname = fitsfile.replace(".fits","_interpbkg.fits")
+            newlist = fits.HDUList([new]) #create new hdulist
+            newlist.writeto(outname,overwrite=True)
+
+    # Get the background flux that lies inside the pixels
+        bkg_flux = 0.0
+        for ix in indexes[np.where(inside)]:
+           if not np.isnan(newbkg[ix[1],ix[0]]):
+               bkg_flux += newbkg[ix[1],ix[0]] # In Jy/pix
+
+        if output == True:
+            new = fits.PrimaryHDU(hdu[0].data - newbkg,header=header_new) #create new hdu
+            outname = fitsfile.replace(".fits","_interpbkgsub.fits")
+            newlist = fits.HDUList([new]) #create new hdulist
+            newlist.writeto(outname,overwrite=True)
+#       else:
+#           print "WARNING, NAN detected at x = {0}, y={1}!".format(ix[0], ix[1])
+        # Rescale the bkg_flux to be in Jy
+        bkg_flux = bkg_flux * ((pix2deg**2) / beamvolume)
+        # And in Jy/beam
+        bkg_flux = bkg_flux / nbeams
+        print("Using interpolated background")
+
+    # Total flux density
     final_flux = total_flux - (bkg_flux * nbeams) # - source_flux
-
-    #print "Number of beams searched: {0} \n Total flux density (Jy): {1} \n Total source flux density (Jy): {2} \n Background flux density (Jy): {3}\n Number of beams interpolated over after finding sources: {4}\n Final flux density (Jy): {5}".format(nbeams, total_flux, source_flux, bkg_flux, len(sources.x), final_flux)
-    print("Number of beams searched: {0} \n Total flux density (Jy): {1} \n Background flux density (Jy): {2}\n Number of beams interpolated over after finding sources: {3}\n Final flux density (Jy): {4}".format(nbeams, total_flux, bkg_flux, len(sources.x), final_flux))
+    print("Number of beams searched: {0} \n Total flux density (Jy): {1} \n Average background flux density (Jy/beam): {2}\n Number of beams interpolated over after finding sources: {3}\n Final flux density (Jy): {4}".format(nbeams, total_flux, bkg_flux, len(sources.x), final_flux))
 
     #return final_flux, total_flux, source_flux, bkg_flux, rms
     return final_flux, total_flux, bkg_flux, rms, nbeams

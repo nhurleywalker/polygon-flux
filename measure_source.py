@@ -47,7 +47,7 @@ firstexc = { "marker" : "x" , "linestyle" : "None", "color" : "blue" }
 restexc = { "marker" : "None" , "linestyle" : "--", "color" : "blue" }
 reticsnr = { "marker" : "None" , "linestyle" : ":", "color" : "green" }
 
-def poly_plot(fitsfile,makeplots):
+def poly_plot(fitsfile, makeplots, bkgtype="mean", output=False):
     print("Fitting polygons to "+fitsfile)
     hdu = fits.open(fitsfile)
 # Remove degenerate axes
@@ -117,7 +117,8 @@ def poly_plot(fitsfile,makeplots):
 # Go measure the flux densities
     if len(polypick.coords.x):
         polygon.x, polygon.y = w.wcs_pix2world(polypick.coords.x,polypick.coords.y,0)
-        find_fluxes(polygon, sources, exclude, fitsfile)
+        find_fluxes(polygon, sources, exclude, fitsfile, bkgtype, output)
+
 # And make nice plots
         if makeplots is True:
             make_single_plot(polygon, sources, exclude, fitsfile)
@@ -195,9 +196,15 @@ if __name__ == "__main__":
     group1 = parser.add_argument_group("files to read")
     group1.add_argument('--fitsfile', dest='fitsfile', default=None, \
                         help="Low-resolution file to read")
-    group2 = parser.add_argument_group("functions to perform")
+    group2 = parser.add_argument_group("Generate plots and images")
     group2.add_argument('--plot', dest='makeplots', default=False, action='store_true', \
                         help="Make png plots of the FITS image (default = False)")
+    group2.add_argument('--output', dest='output', default=False, action='store_true', \
+                        help="Make FITS images of the background-subtracted image etc (default = False)")
+    group3 = parser.add_argument_group("Options")
+    group2.add_argument('--bkgtype', dest='bkgtype', default="mean", \
+                        help="Use mean background ('mean'), or an interpolated 2D plane ('interp') (default = 'mean')")
+
 
     options = parser.parse_args()
 
@@ -217,6 +224,6 @@ if __name__ == "__main__":
 
     if square is True:
         # Perform the fitting
-        poly_plot(options.fitsfile,options.makeplots)
+        poly_plot(options.fitsfile,options.makeplots, bkgtype=options.bkgtype, output=options.output)
     else:
         print("Please provide a square FITS image.")
