@@ -203,7 +203,7 @@ if __name__ == "__main__":
                         help="Make FITS images of the background-subtracted image etc (default = False)")
     group3 = parser.add_argument_group("Options")
     group2.add_argument('--bkgtype', dest='bkgtype', default="mean", \
-                        help="Use mean background ('mean'), or an interpolated 2D plane ('interp') (default = 'mean')")
+                        help="Use mean background ('mean'), no background ('none'), or an interpolated 2D plane ('interp') (default = 'mean')")
 
 
     options = parser.parse_args()
