@@ -362,6 +362,8 @@ def find_fluxes(polygon, sources, exclude, fitsfile, bkgtype="mean", output=Fals
        bkg_list.append(hdu[0].data[ix[1],ix[0]]) # In Jy/pix
        mask[ix[1],ix[0]] = hdu[0].data[ix[1],ix[0]] # Unset the NaNs of the mask
 
+    # RMS of the area used for backgrounding in Jy/pix
+    rms = np.std(bkg_list)
     if output == True:
        # Save mask as a FITS file
         header_new = hdu[0].header
@@ -372,8 +374,8 @@ def find_fluxes(polygon, sources, exclude, fitsfile, bkgtype="mean", output=Fals
         newlist = fits.HDUList([new]) #create new hdulist
         newlist.writeto(outname,overwrite=True)
 
-    # RMS of the area used for backgrounding in Jy/pix
-        rms = np.std(bkg_list)
+    if bkgtype == "none":
+        bkg_flux = 0.0
 
     if bkgtype == "mean":
     # Average background level in Jy/pix
@@ -384,7 +386,6 @@ def find_fluxes(polygon, sources, exclude, fitsfile, bkgtype="mean", output=Fals
             outname = fitsfile.replace(".fits","_meanbkgsub.fits")
             newlist = fits.HDUList([new]) #create new hdulist
             newlist.writeto(outname,overwrite=True)
-
 
     if bkgtype == "interp":
     # Interpolated 2D plane for the background
